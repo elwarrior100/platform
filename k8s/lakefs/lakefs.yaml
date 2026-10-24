@@ -1,0 +1,89 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: lakefs
+  namespace: data
+spec:
+  selector:
+    app: lakefs
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lakefs
+  namespace: data
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: lakefs
+  template:
+    metadata:
+      labels:
+        app: lakefs
+    spec:
+      containers:
+        - name: lakefs
+          image: treeverse/lakefs:1.86.0
+          args: ["run"]
+          ports:
+            - containerPort: 8000
+          env:
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: postgres-auth, key: LAKEFS_DB_PASSWORD}
+            - name: LAKEFS_DATABASE_TYPE
+              value: postgres
+            - name: LAKEFS_DATABASE_POSTGRES_CONNECTION_STRING
+              value: postgres://lakefs:$(DB_PASSWORD)@postgres:5432/lakefs?sslmode=disable
+            - name: LAKEFS_AUTH_ENCRYPT_SECRET_KEY
+              valueFrom:
+                secretKeyRef: {name: lakefs-auth, key: AUTH_ENCRYPT_SECRET_KEY}
+            - name: LAKEFS_INSTALLATION_USER_NAME
+              value: admin
+            - name: LAKEFS_INSTALLATION_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef: {name: lakefs-auth, key: ADMIN_ACCESS_KEY_ID}
+            - name: LAKEFS_INSTALLATION_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef: {name: lakefs-auth, key: ADMIN_SECRET_ACCESS_KEY}
+            - name: LAKEFS_BLOCKSTORE_TYPE
+              value: s3
+            - name: LAKEFS_BLOCKSTORE_S3_ENDPOINT
+              value: http://seaweedfs:8333
+            - name: LAKEFS_BLOCKSTORE_S3_FORCE_PATH_STYLE
+              value: "true"
+            - name: LAKEFS_BLOCKSTORE_S3_DISCOVER_BUCKET_REGION
+              value: "false"
+            - name: LAKEFS_BLOCKSTORE_S3_REGION
+              value: us-east-1
+            - name: LAKEFS_BLOCKSTORE_S3_DISABLE_PRE_SIGNED
+              value: "true"
+            - name: LAKEFS_BLOCKSTORE_S3_DISABLE_PRE_SIGNED_UI
+              value: "true"
+            - name: LAKEFS_BLOCKSTORE_S3_CREDENTIALS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef: {name: seaweedfs-auth, key: S3_ACCESS_KEY}
+            - name: LAKEFS_BLOCKSTORE_S3_CREDENTIALS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef: {name: seaweedfs-auth, key: S3_SECRET_KEY}
+            - name: LAKEFS_EMAIL_SUBSCRIPTION_ENABLED
+              value: "false"
+            - name: LAKEFS_STATS_ENABLED
+              value: "false"
+          readinessProbe:
+            httpGet:
+              path: /_health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            requests:
+              memory: 256Mi
+              cpu: 100m
+            limits:
+              memory: 1Gi

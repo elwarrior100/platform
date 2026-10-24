@@ -29,3 +29,14 @@ if ! kubectl -n "$NS" get secret seaweedfs-auth >/dev/null 2>&1; then
 else
   echo "secret seaweedfs-auth já existe"
 fi
+
+# lakeFS: chave de cifra interna e credenciais do administrador inicial.
+if ! kubectl -n "$NS" get secret lakefs-auth >/dev/null 2>&1; then
+  kubectl -n "$NS" create secret generic lakefs-auth \
+    --from-literal=AUTH_ENCRYPT_SECRET_KEY="$(openssl rand -hex 32)" \
+    --from-literal=ADMIN_ACCESS_KEY_ID="AKIA$(openssl rand -hex 8 | tr 'a-f' 'A-F')" \
+    --from-literal=ADMIN_SECRET_ACCESS_KEY="$(openssl rand -base64 48 | tr -d '/+=\n' | cut -c1-40)"
+  echo "secret lakefs-auth criado"
+else
+  echo "secret lakefs-auth já existe"
+fi
