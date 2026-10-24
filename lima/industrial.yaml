@@ -1,0 +1,7 @@
+# VM da plataforma: Ubuntu + k3s (ver docs/adr/001-runtime-kubernetes.md)
+# Arrancar: limactl start --name industrial platform/lima/industrial.yaml
+base: template:k3s
+vmType: vz
+cpus: 8
+memory: 24GiB
+disk: 150GiB
