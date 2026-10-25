@@ -14,11 +14,11 @@ data:
 apiVersion: v1
 kind: Service
 metadata:
-  name: ot-simulator
+  name: ot-edge
   namespace: ot
 spec:
   selector:
-    app: ot-simulator
+    app: ot-edge
   ports:
     - name: modbus-tcp
       port: 502
@@ -26,11 +26,14 @@ spec:
     - name: control
       port: 8080
       targetPort: 8080
+    - name: opcua
+      port: 4840
+      targetPort: 4840
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: ot-simulator
+  name: ot-edge
   namespace: ot
 spec:
   replicas: 1
@@ -38,20 +41,23 @@ spec:
     type: Recreate
   selector:
     matchLabels:
-      app: ot-simulator
+      app: ot-edge
   template:
     metadata:
       labels:
-        app: ot-simulator
+        app: ot-edge
     spec:
       containers:
         - name: simulator
-          image: localhost/ot-simulator:0.1.1
+          image: localhost/ot-edge:0.2.0
           imagePullPolicy: IfNotPresent
-          args: ["--scenarios", "/etc/ot/scenarios.yaml"]
+          env:
+            - name: SCENARIOS_FILE
+              value: /etc/ot/scenarios.yaml
           ports:
             - containerPort: 5020
             - containerPort: 8080
+            - containerPort: 4840
           readinessProbe:
             httpGet:
               path: /health
@@ -62,7 +68,7 @@ spec:
               memory: 64Mi
               cpu: 50m
             limits:
-              memory: 256Mi
+              memory: 384Mi
           volumeMounts:
             - name: scenarios
               mountPath: /etc/ot
