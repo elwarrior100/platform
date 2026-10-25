@@ -1,0 +1,73 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ot-scenarios
+  namespace: ot
+data:
+  scenarios.yaml: |
+    # Cenários agendados no arranque. Exemplo:
+    # scenarios:
+    #   - {asset: PUMP-01, kind: drift, start_s: 300, duration_s: 3600}
+    #   - {asset: "*", kind: comms_gap, start_s: 900, duration_s: 120}
+    scenarios: []
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ot-simulator
+  namespace: ot
+spec:
+  selector:
+    app: ot-simulator
+  ports:
+    - name: modbus-tcp
+      port: 502
+      targetPort: 5020
+    - name: control
+      port: 8080
+      targetPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ot-simulator
+  namespace: ot
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: ot-simulator
+  template:
+    metadata:
+      labels:
+        app: ot-simulator
+    spec:
+      containers:
+        - name: simulator
+          image: localhost/ot-simulator:0.1.1
+          imagePullPolicy: IfNotPresent
+          args: ["--scenarios", "/etc/ot/scenarios.yaml"]
+          ports:
+            - containerPort: 5020
+            - containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            periodSeconds: 5
+          resources:
+            requests:
+              memory: 64Mi
+              cpu: 50m
+            limits:
+              memory: 256Mi
+          volumeMounts:
+            - name: scenarios
+              mountPath: /etc/ot
+              readOnly: true
+      volumes:
+        - name: scenarios
+          configMap:
+            name: ot-scenarios
