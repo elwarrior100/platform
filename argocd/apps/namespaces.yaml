@@ -1,0 +1,21 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: namespaces
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  project: default
+  source:
+    repoURL: git@github.com:elwarrior100/modbus_data_plataform.git
+    targetRevision: main
+    path: platform/k8s
+    directory:
+      include: "00-namespaces.yaml"
+  destination:
+    server: https://kubernetes.default.svc
+  syncPolicy:
+    automated:
+      prune: false          # nunca apagar um namespace (levava os dados com ele)
+      selfHeal: true

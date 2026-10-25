@@ -1,0 +1,30 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: data
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  project: default
+  source:
+    repoURL: git@github.com:elwarrior100/modbus_data_plataform.git
+    targetRevision: main
+    path: platform/k8s
+    directory:
+      recurse: true
+      include: "{postgres/*.yaml,seaweedfs/*.yaml,lakefs/*.yaml}"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: data
+  syncPolicy:
+    automated:
+      prune: false          # dados: um manifesto apagado do git não apaga a base de dados
+      selfHeal: true
+    syncOptions:
+      - RespectIgnoreDifferences=true
+  ignoreDifferences:
+    - group: apps
+      kind: StatefulSet
+      jsonPointers:
+        - /spec/volumeClaimTemplates   # campos preenchidos pelo Kubernetes (volumeMode, status)

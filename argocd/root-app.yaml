@@ -1,0 +1,20 @@
+# Aplicação "raiz" (app-of-apps): gere as aplicações em platform/argocd/apps/.
+# Aplicar uma vez: kubectl apply -f platform/argocd/root-app.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: git@github.com:elwarrior100/modbus_data_plataform.git
+    targetRevision: main
+    path: platform/argocd/apps
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

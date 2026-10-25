@@ -1,0 +1,31 @@
+# Valores do chart argo/argo-cd 10.11.1 (Argo CD v3.5.6).
+# Instalar: platform/scripts/install-argocd.sh
+configs:
+  params:
+    server.insecure: true        # sem TLS no serviço; o acesso é por port-forward (sem Ingress)
+
+dex:
+  enabled: false                 # sem login externo (SSO)
+notifications:
+  enabled: false
+
+controller:
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {memory: 768Mi}
+server:
+  resources:
+    requests: {cpu: 50m, memory: 128Mi}
+    limits: {memory: 256Mi}
+repoServer:
+  resources:
+    requests: {cpu: 50m, memory: 128Mi}
+    limits: {memory: 384Mi}
+redis:
+  resources:
+    requests: {cpu: 50m, memory: 64Mi}
+    limits: {memory: 128Mi}
+applicationSet:
+  resources:
+    requests: {cpu: 20m, memory: 64Mi}
+    limits: {memory: 128Mi}
