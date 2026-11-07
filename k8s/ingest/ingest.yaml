@@ -1,0 +1,61 @@
+# Collector (OPC UA -> spool) e writer (spool -> bronze no lakeFS), agora em Deployments separados:
+# o spool vive no PostgreSQL (ADR-006), por isso já não precisam de partilhar um volume nem um pod.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: collector
+  namespace: ingest
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate        # nunca dois collectors a subscrever ao mesmo tempo (duplicariam o trabalho)
+  selector:
+    matchLabels: {app: collector}
+  template:
+    metadata:
+      labels: {app: collector}
+    spec:
+      containers:
+        - name: collector
+          image: localhost/ingest:0.2.0
+          imagePullPolicy: IfNotPresent
+          args: ["collect"]
+          env:
+            - {name: OPCUA_URL, value: "opc.tcp://ot-edge.ot.svc.cluster.local:4840/ot-gateway"}
+          envFrom:
+            - secretRef: {name: ingest-db}
+          resources:
+            requests: {cpu: 50m, memory: 96Mi}
+            limits: {memory: 256Mi}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: writer
+  namespace: ingest
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate        # nunca dois writers a formar lotes ao mesmo tempo
+  selector:
+    matchLabels: {app: writer}
+  template:
+    metadata:
+      labels: {app: writer}
+    spec:
+      containers:
+        - name: writer
+          image: localhost/ingest:0.2.0
+          imagePullPolicy: IfNotPresent
+          args: ["write"]
+          env:
+            - {name: LAKEFS_ENDPOINT, value: "http://lakefs.data.svc.cluster.local:8000"}
+            - {name: BATCH_ROWS, value: "5000"}
+            - {name: BATCH_AGE_S, value: "60"}
+            - {name: WRITE_INTERVAL_S, value: "10"}
+          envFrom:
+            - secretRef: {name: ingest-db}
+            - secretRef: {name: lakefs-credentials}
+          resources:
+            requests: {cpu: 50m, memory: 192Mi}
+            limits: {memory: 512Mi}

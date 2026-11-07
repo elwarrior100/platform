@@ -40,3 +40,15 @@ if ! kubectl -n "$NS" get secret lakefs-auth >/dev/null 2>&1; then
 else
   echo "secret lakefs-auth já existe"
 fi
+
+# ingest: copia as credenciais do lakeFS para o namespace do writer (um Secret não atravessa namespaces).
+# lakeFS open source não tem permissões por utilizador, por isso é a conta de administrador.
+kubectl get ns ingest >/dev/null 2>&1 || kubectl create ns ingest
+if ! kubectl -n ingest get secret lakefs-credentials >/dev/null 2>&1; then
+  kubectl -n ingest create secret generic lakefs-credentials \
+    --from-literal=LAKEFS_ACCESS_KEY_ID="$(kubectl -n "$NS" get secret lakefs-auth -o jsonpath='{.data.ADMIN_ACCESS_KEY_ID}' | base64 -d)" \
+    --from-literal=LAKEFS_SECRET_ACCESS_KEY="$(kubectl -n "$NS" get secret lakefs-auth -o jsonpath='{.data.ADMIN_SECRET_ACCESS_KEY}' | base64 -d)"
+  echo "secret lakefs-credentials criado em ingest"
+else
+  echo "secret lakefs-credentials já existe"
+fi
