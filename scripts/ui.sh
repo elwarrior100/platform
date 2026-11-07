@@ -13,6 +13,7 @@ UIS=(
   "lakeFS|data|svc/lakefs|8082|8000|/"
   "SeaweedFS (ficheiros)|data|svc/seaweedfs|8888|8888|/"
   "Simulador (controlo)|ot|svc/ot-edge|8083|8080|/health"
+  "Airflow|airflow|svc/airflow-api-server|8084|8080|/"
   "OPC UA (usar o UaExpert)|ot|svc/ot-edge|4840|4840|-"
 )
 
@@ -63,10 +64,12 @@ cat <<'TXT'
 
 PALAVRAS-PASSE (vão para a área de transferência; cola com Cmd+V):
   Argo CD   (utilizador: admin)
-    kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d | pbcopy
+    KUBECONFIG=$HOME/.lima/industrial/copied-from-guest/kubeconfig.yaml kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d | pbcopy
+  Airflow   (utilizador: admin)
+    KUBECONFIG=$HOME/.lima/industrial/copied-from-guest/kubeconfig.yaml kubectl -n airflow get secret airflow-admin -o jsonpath='{.data.password}' | base64 -d | pbcopy
   lakeFS    (utilizador = chave de acesso; palavra-passe = chave secreta)
-    kubectl -n data get secret lakefs-auth -o jsonpath='{.data.ADMIN_ACCESS_KEY_ID}' | base64 -d | pbcopy
-    kubectl -n data get secret lakefs-auth -o jsonpath='{.data.ADMIN_SECRET_ACCESS_KEY}' | base64 -d | pbcopy
+    KUBECONFIG=$HOME/.lima/industrial/copied-from-guest/kubeconfig.yaml kubectl -n data get secret lakefs-auth -o jsonpath='{.data.ADMIN_ACCESS_KEY_ID}' | base64 -d | pbcopy
+    KUBECONFIG=$HOME/.lima/industrial/copied-from-guest/kubeconfig.yaml kubectl -n data get secret lakefs-auth -o jsonpath='{.data.ADMIN_SECRET_ACCESS_KEY}' | base64 -d | pbcopy
 
 Ctrl-C para fechar os túneis.
 TXT
