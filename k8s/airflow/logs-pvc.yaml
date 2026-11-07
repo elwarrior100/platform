@@ -1,0 +1,13 @@
+# Volume dos logs das tarefas do Airflow. É criado aqui (e não pelo chart) porque o chart pede-o em
+# ReadWriteMany e o provisionador local-path do k3s só suporta ReadWriteOnce. Chega: está tudo no mesmo nó.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: airflow-logs-data
+  namespace: airflow
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 2Gi

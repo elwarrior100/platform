@@ -1,0 +1,65 @@
+# Valores do chart apache-airflow/airflow 1.22.0 (Airflow 3.2.2). Ver docs/adr/007-airflow-e-silver.md.
+# Instalar: platform/scripts/install-airflow.sh
+executor: KubernetesExecutor
+
+images:
+  airflow:
+    repository: localhost/airflow-pipelines     # imagem própria, construída com platform/scripts/build-image.sh
+    tag: "0.2.3"
+    pullPolicy: IfNotPresent
+
+# Base de metadados: a base "airflow" no PostgreSQL que já existe (criada por bootstrap-postgres-airflow.sh)
+postgresql:
+  enabled: false
+data:
+  metadataSecretName: airflow-metadata
+
+# Chaves fixas, geradas uma vez e guardadas em Secrets (sem isto mudavam a cada instalação)
+fernetKeySecretName: airflow-fernet
+apiSecretKeySecretName: airflow-api-secret
+jwtSecretName: airflow-jwt
+
+# O que não vamos usar (poupa memória)
+redis:
+  enabled: false
+statsd:
+  enabled: false
+triggerer:
+  enabled: false
+
+apiServer:
+  resources:
+    requests: {cpu: 100m, memory: 512Mi}
+    limits: {memory: 1Gi}
+scheduler:
+  resources:
+    requests: {cpu: 100m, memory: 512Mi}
+    limits: {memory: 1Gi}
+dagProcessor:
+  resources:
+    requests: {cpu: 50m, memory: 384Mi}
+    limits: {memory: 768Mi}
+workers:
+  kubernetes:                  # com o KubernetesExecutor, são os limites de cada pod de tarefa
+    resources:
+      requests: {cpu: 100m, memory: 384Mi}
+      limits: {memory: 1Gi}
+
+# Ligação ao lakeFS para os pods de tarefa (o Secret é copiado por install-airflow.sh)
+env:
+  - {name: LAKEFS_ENDPOINT, value: "http://lakefs.data.svc.cluster.local:8000"}
+extraEnvFrom: |
+  - secretRef: {name: lakefs-credentials}
+
+# Os pods de tarefa desaparecem quando acabam: os logs têm de ficar num volume. O volume é criado por
+# platform/k8s/airflow/logs-pvc.yaml (o chart pediria ReadWriteMany, que o local-path não suporta).
+logs:
+  persistence:
+    enabled: true
+    existingClaim: airflow-logs-data
+
+createUserJob:
+  enabled: true                # a palavra-passe entra por --set-file em install-airflow.sh, não está aqui
+  defaultUser:
+    username: admin
+    email: admin@example.com
