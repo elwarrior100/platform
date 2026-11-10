@@ -33,6 +33,7 @@ spec:
       containers:
         - name: seaweedfs
           image: chrislusf/seaweedfs:latest
+          imagePullPolicy: IfNotPresent
           args:
             - server
             - -dir=/data
