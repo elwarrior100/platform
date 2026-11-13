@@ -1,0 +1,24 @@
+# OpenMetadata 2.0.7 sobre o PostgreSQL existente e o orquestrador nativo de Kubernetes (um Job por ingestão).
+# A palavra-passe da base vem do Secret `openmetadata-db` (criado por install-openmetadata.sh), nunca daqui.
+image:
+  pullPolicy: IfNotPresent
+openmetadata:
+  config:
+    database:
+      host: postgres.data.svc.cluster.local
+      port: 5432
+      driverClass: org.postgresql.Driver
+      dbScheme: postgresql
+      databaseName: openmetadata
+      dbParams: ""
+      auth:
+        username: openmetadata
+        password:
+          secretRef: openmetadata-db
+          secretKey: password
+    pipelineServiceClientConfig:
+      type: k8s
+      k8s:
+        ingestionImage: "docker.getcollate.io/openmetadata/ingestion-base:2.0.7"
+        rbac:
+          enabled: true

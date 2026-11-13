@@ -1,0 +1,19 @@
+# Dependências do OpenMetadata: só o OpenSearch. O MySQL e o Airflow do chart ficam desligados
+# (usamos o PostgreSQL que já temos e o orquestrador nativo de Kubernetes). Ver docs/adr/009-openmetadata.md.
+mysql:
+  enabled: false
+airflow:
+  enabled: false
+opensearch:
+  enabled: true
+  imagePullPolicy: IfNotPresent
+  opensearchJavaOpts: "-Xmx1g -Xms1g"
+  persistence:
+    size: 10Gi
+  resources:
+    requests:
+      cpu: "200m"
+      memory: "1500M"
+    limits:
+      cpu: "2000m"
+      memory: "2048M"
