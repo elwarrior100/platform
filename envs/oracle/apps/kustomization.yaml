@@ -19,3 +19,6 @@ patches:
     patch: |-
       - {op: replace, path: /spec/sources/1/targetRevision, value: oracle}
       - {op: replace, path: /spec/sources/2/targetRevision, value: oracle}
+  - target: {kind: Application, labelSelector: "platform/values-source-1=true"}
+    patch: |-
+      - {op: replace, path: /spec/sources/1/targetRevision, value: oracle}

@@ -9,3 +9,5 @@ resources:
   - network-policies.yaml
   - projects.yaml
   - secrets.yaml
+  - openmetadata-dependencies.yaml
+  - openmetadata.yaml

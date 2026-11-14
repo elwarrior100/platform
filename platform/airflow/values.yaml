@@ -16,8 +16,9 @@ config:
   dag_processor:
     # One bundle per project. GitDagBundle (apache-airflow-providers-git, shipped in the official image) clones the
     # project repository and refreshes it every refresh_interval seconds: a pushed DAG shows up without a new image.
-    # (one line: the chart copies this value into airflow.cfg)
-    dag_bundle_config_list: '[{"name": "modbus", "classpath": "airflow.providers.git.bundles.git.GitDagBundle", "kwargs": {"repo_url": "https://github.com/elwarrior100/modbus_data_plataform.git", "tracking_ref": "main", "subdir": "pipelines/dags", "refresh_interval": 120}}]'
+    # (one line: the chart copies this value into airflow.cfg). tracking_ref is the SAME commit as MODBUS_PIPELINES_IMAGE:
+    # DAG and task code move together, in one platform commit, so they can never drift apart.
+    dag_bundle_config_list: '[{"name": "modbus", "classpath": "airflow.providers.git.bundles.git.GitDagBundle", "kwargs": {"repo_url": "https://github.com/elwarrior100/modbus_data_plataform.git", "tracking_ref": "44008786e1c6878d7de0155979a9c0706199f05a", "subdir": "pipelines/dags", "refresh_interval": 120}}]'
 
 # Metadata database: the "airflow" database in the existing PostgreSQL (created by install-airflow.sh)
 postgresql:

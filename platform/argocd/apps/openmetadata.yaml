@@ -1,0 +1,31 @@
+# OpenMetadata (Helm chart) under Argo CD: the chart plus this repository's values ($values).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: openmetadata
+  namespace: argocd
+  labels:
+    platform/values-source-1: "true"   # source 1 reads this repository: each environment sets which branch
+  annotations:
+    argocd.argoproj.io/sync-wave: "4"
+spec:
+  project: default
+  sources:
+    - repoURL: https://helm.open-metadata.org/
+      chart: openmetadata
+      targetRevision: 2.0.7
+      helm:
+        releaseName: openmetadata
+        valueFiles: [$values/platform/openmetadata/values.yaml]
+    - repoURL: https://github.com/elwarrior100/platform.git
+      targetRevision: main
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: openmetadata
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true

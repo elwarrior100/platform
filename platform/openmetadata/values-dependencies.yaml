@@ -15,5 +15,5 @@ opensearch:
       cpu: "200m"
       memory: "1500M"
     limits:
-      cpu: "2000m"
+      cpu: "1000m"        # at most half of the 2 OCPU on Oracle
       memory: "2048M"
