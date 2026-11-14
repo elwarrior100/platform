@@ -49,7 +49,7 @@ spec:
     spec:
       containers:
         - name: simulator
-          image: localhost/ot-edge:0.2.0
+          image: ghcr.io/elwarrior100/modbus-ot-edge:f5b17ea025676c34fceb26890553312af47f1be0
           imagePullPolicy: IfNotPresent
           env:
             - name: SCENARIOS_FILE

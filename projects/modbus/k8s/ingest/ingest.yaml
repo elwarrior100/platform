@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: collector
-          image: localhost/ingest:0.2.0
+          image: ghcr.io/elwarrior100/modbus-ingest:f5b17ea025676c34fceb26890553312af47f1be0
           imagePullPolicy: IfNotPresent
           args: ["collect"]
           env:
@@ -45,7 +45,7 @@ spec:
     spec:
       containers:
         - name: writer
-          image: localhost/ingest:0.2.0
+          image: ghcr.io/elwarrior100/modbus-ingest:f5b17ea025676c34fceb26890553312af47f1be0
           imagePullPolicy: IfNotPresent
           args: ["write"]
           env:
