@@ -17,7 +17,7 @@ CLI_IMAGE="ghcr.io/oracle/oci-cli:latest@sha256:2127c2f50ee1353fa78cbf538ab91ffa
 DB_IMAGE="timescale/timescaledb:latest-pg17@sha256:6a6b7d7a346d7c6be03a310c240706f3bbc6d7adbdf3fbc07823570b34337f5e"
 SW_IMAGE="chrislusf/seaweedfs:latest@sha256:ccad23e18639c8b98cee17e7100b95830a06077b56d8e5b006d6dcf8ec5e94a0"
 RCLONE_IMAGE="rclone/rclone:1.71.2@sha256:3103526c506266a9ecdf064efe99bf3677d92ef6407af124d8c56b4f49cbaa51"
-LAKEFS_IMAGE="treeverse/lakefs:1.86.0"
+LAKEFS_IMAGE="treeverse/lakefs:1.86.0@sha256:fb7a0d90f77e3f893e8b8c6f3be131c090f6f0160c2d6c7784c4378cf7e66ea1"
 
 # shellcheck disable=SC2329  # called by the EXIT trap
 cleanup() { kubectl delete namespace "$NS" --ignore-not-found --wait=false >/dev/null 2>&1 || true; }
@@ -70,6 +70,7 @@ kind: Job
 metadata: {name: lake-restore-test, namespace: $NS}
 spec:
   backoffLimit: 0
+  activeDeadlineSeconds: 900     # even if this script dies (Mac asleep), the pod stops after 15 minutes
   template:
     metadata:
       labels: {app: lake-restore-test}

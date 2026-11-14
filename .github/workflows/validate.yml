@@ -40,6 +40,12 @@ jobs:
           echo "e4a487ee7ccd7d3a7f7ec08657610aa3606637dab924210b3aee62570fb4b080  gl.tgz" | sha256sum -c -
           tar -xzf kc.tgz kubeconform && tar -xzf gl.tgz gitleaks && sudo mv kubeconform gitleaks /usr/local/bin/
           sudo apt-get install -y -qq shellcheck >/dev/null
+      - name: bootstrap order (the root application's project must be created by install-argocd.sh)
+        run: |
+          for env in local oracle; do
+            p=$(awk '/^  project:/ {print $2}' envs/$env/root-app.yaml)
+            grep -q "projects/$p.yaml" scripts/install-argocd.sh || { echo "root ($env) is in project $p, which install-argocd.sh does not create"; exit 1; }
+          done
       - name: secrets (gitleaks, full history)
         run: gitleaks git . --no-banner --redact
       - name: kustomize (both environments)

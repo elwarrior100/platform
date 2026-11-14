@@ -18,7 +18,8 @@ scripts/               bootstrapping a new cluster and operating the local VM
 
 **Bootstrapping a cluster** (the VM already exists: Lima locally, `terraform/oracle` on Oracle):
 
-1. `scripts/install-argocd.sh`, then `kubectl apply -f envs/<local|oracle>/root-app.yaml`
+1. `scripts/install-argocd.sh` (also creates the `bootstrap` project the root application needs), then
+   `kubectl apply -f envs/<local|oracle>/root-app.yaml`
 2. locally only: `scripts/eso-local-key.sh` (the one key the External Secrets Operator needs; Oracle uses instance principal)
 3. `scripts/wait-secrets.sh` (Argo CD installs the operator, which creates every Secret from the vault)
 4. `scripts/bootstrap-postgres-ingest.sh`, `scripts/install-airflow.sh`, `scripts/install-openmetadata.sh`

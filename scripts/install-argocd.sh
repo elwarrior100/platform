@@ -10,3 +10,7 @@ helm repo update argo >/dev/null
 helm upgrade --install argocd argo/argo-cd --version "$CHART_VERSION" \
   --namespace argocd --create-namespace \
   -f "$ROOT/platform/argocd/values.yaml" --wait --timeout 8m
+
+# The root application lives in the AppProject "bootstrap", which root itself also syncs afterwards. On an empty
+# cluster it does not exist yet, so Argo CD would refuse root: create it here, before root-app.yaml is applied.
+kubectl apply -f "$ROOT/platform/argocd/projects/bootstrap.yaml"

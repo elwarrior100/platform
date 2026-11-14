@@ -2,7 +2,7 @@
 # Bootstrap with scripts/install-argocd.sh; afterwards Argo CD manages itself (platform/argocd/apps/argocd.yaml).
 configs:
   params:
-    server.insecure: true        # no TLS on the service; access is via port-forward (no Ingress)
+    server.insecure: true        # no TLS on the service; reached through the Traefik Ingress (envs/<env>/ingress) or port-forward
 
 dex:
   enabled: false                 # no external login (SSO)
