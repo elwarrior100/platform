@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Creates a project's lakeFS repository (and its SeaweedFS bucket) on a fresh cluster. Idempotent.
+# Creates a project's lakeFS repository (and its SeaweedFS bucket) on a fresh cluster, and protects its main
+# branch. Idempotent.
 # Usage: ./scripts/lakefs-repo.sh <repository> <bucket>      e.g. industrial-lake lake
 #
 # Each project gets its own lakeFS repository (ADR-010). The project then installs its own hooks
@@ -52,4 +53,15 @@ else
   curl -sS --fail-with-body -K "$TMP/curl.cfg" -H 'Content-Type: application/json' -X POST "$API/repositories" \
     -d "{\"name\":\"$REPO\",\"storage_namespace\":\"s3://$BUCKET\",\"default_branch\":\"main\"}" >/dev/null
   echo "repository $REPO created (s3://$BUCKET, branch main)"
+fi
+
+# 3. protect main: no direct writes or commits, only merges (the writer and the silver DAG already work on their own
+#    branches and merge). A repair that needs a hard reset of main must remove this rule first, then put it back.
+rules=$(curl -s -K "$TMP/curl.cfg" "$API/repositories/$REPO/settings/branch_protection")
+if echo "$rules" | grep -q '"pattern":"main"'; then
+  echo "main of $REPO already protected"
+else
+  curl -sS --fail-with-body -K "$TMP/curl.cfg" -H 'Content-Type: application/json' -X PUT \
+    "$API/repositories/$REPO/settings/branch_protection" -d '[{"pattern":"main"}]' >/dev/null
+  echo "main of $REPO protected (merges only)"
 fi
