@@ -20,6 +20,18 @@ to the local Lima cluster).
   `kubectl delete pods -A --field-selector=status.phase=Failed`), Postgres log says `database system was shut down`
   (clean), the writer logs `exportado` again.
 
+## The Airflow scheduler crash-loops after a reboot (known Airflow 3.2.2 bug)
+Symptom: `airflow-scheduler` in CrashLoopBackOff, log ends in `adopt_or_reset_orphaned_tasks` ...
+`DetachedInstanceError`. Cause: a task was running when the node stopped; on start the scheduler tries to adopt that
+orphan and crashes while logging it.
+1. Find it: in the airflow database, `select run_id, task_id from task_instance where state = 'running'` whose
+   `queued_by_job_id` is a failed scheduler job.
+2. Mark it failed through the API (the CLI `tasks clear` does not touch a "running" task):
+   `PATCH /api/v2/dags/<dag>/dagRuns/<run>/taskInstances/<task>` with `{"new_state": "failed"}` (admin login from the
+   `airflow-admin` Secret), or "Mark as failed" in the UI if the API server is up.
+3. Delete the scheduler pod; then `airflow tasks clear` that hour so it runs again.
+Seen on 2026-11-14 after the graceful-shutdown reboot test. Check newer Airflow releases for a fix.
+
 ## lakeFS main is unreadable (a commit points at a missing object)
 1. Stop the writer: `kubectl -n ingest scale deploy/writer --replicas=0`.
 2. Remove the branch protection of `main` (lakeFS UI: repository settings, or the API `settings/branch_protection`),
