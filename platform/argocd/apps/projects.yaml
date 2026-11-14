@@ -1,6 +1,6 @@
-# Um projeto = uma pasta em projects/<projeto>/k8s/<componente>/. Este ApplicationSet cria uma aplicação do Argo CD
-# por componente, sem mexer na plataforma (ADR-010). O nome da aplicação é o do componente (ingest, ot), igual ao
-# que existia antes, e o namespace também.
+# One project = one folder under projects/<project>/k8s/<component>/. This ApplicationSet creates one Argo CD
+# application per component without touching the platform. The application name and namespace are the
+# component name (ingest, ot), the same as before the split.
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
@@ -11,7 +11,7 @@ spec:
   goTemplateOptions: ["missingkey=error"]
   generators:
     - git:
-        repoURL: https://github.com/elwarrior100/plataform.git
+        repoURL: https://github.com/elwarrior100/platform.git
         revision: main
         directories:
           - path: projects/*/k8s/*
@@ -22,11 +22,11 @@ spec:
       labels:
         project: "{{ index .path.segments 1 }}"
       annotations:
-        argocd.argoproj.io/sync-wave: "2"     # depois da plataforma (wave 1)
+        argocd.argoproj.io/sync-wave: "2"     # after the platform (wave 1)
     spec:
       project: default
       source:
-        repoURL: https://github.com/elwarrior100/plataform.git
+        repoURL: https://github.com/elwarrior100/platform.git
         targetRevision: main
         path: "{{ .path.path }}"
       destination:
@@ -34,5 +34,5 @@ spec:
         namespace: "{{ .path.basename }}"
       syncPolicy:
         automated:
-          prune: false        # o spool do ingest guarda amostras ainda não escritas no lakeFS
+          prune: false        # the ingest spool holds samples not yet written to lakeFS
           selfHeal: true

@@ -1,23 +1,23 @@
-# plataform
+# platform
 
-Plataforma de dados partilhada (GitOps), servida pelo Argo CD a cada cluster: local (Mac, Lima + k3s) e Oracle
-Cloud (Always Free, Ampere A1). Os projetos (código, DAGs, imagens) vivem nos seus próprios repositórios;
-aqui só se diz **o que corre, com que imagem e em que ambiente**.
+Shared data platform (GitOps), delivered by Argo CD to each cluster: local (Mac, Lima + k3s) and Oracle Cloud
+(Always Free, Ampere A1). Projects (code, DAGs, images) live in their own repositories; this one only says
+**what runs, with which image, and in which environment**.
 
 ```
-terraform/oracle/      a máquina na Oracle (VM, rede) e o cofre de segredos
-platform/              partilhado por todos os projetos
-  argocd/              o Argo CD, a aplicação raiz e o ApplicationSet dos projetos
-  airflow/             um Airflow para todos (KubernetesExecutor)
+terraform/oracle/      the Oracle machine (VM, network) and the secrets vault
+platform/              shared by every project
+  argocd/              Argo CD, the root application and the per-project ApplicationSet
+  airflow/             one Airflow for everyone (KubernetesExecutor)
   k8s/                 Postgres (+Timescale), SeaweedFS, lakeFS, namespaces
-  openmetadata/        catálogo, linhagem e histórico dos gates de qualidade
-projects/<projeto>/    um projeto = uma pasta (hoje: modbus)
-envs/local · oracle    o que muda entre ambientes
-scripts/               arranque de um cluster novo e operação da VM local
+  openmetadata/        catalog, lineage and quality-gate history
+projects/<project>/    one project = one folder (today: modbus)
+envs/local · oracle    what differs between environments
+scripts/               bootstrapping a new cluster and operating the local VM
 ```
 
-**Segredos:** nenhum valor de segredo está neste repositório. Ficam num cofre (OCI Vault) e o External Secrets
-Operator cria os Secrets do Kubernetes em cada cluster.
+**Secrets:** no secret value is stored in this repository. They live in a vault (OCI Vault) and the External
+Secrets Operator creates the Kubernetes Secrets in each cluster.
 
-Primeiro projeto: [modbus_data_plataform](https://github.com/elwarrior100/modbus_data_plataform), um pipeline
-industrial Modbus RS-232 → OPC UA → lakeFS (bronze/silver/gold) com gates de qualidade impostos por hooks.
+First project: [modbus_data_plataform](https://github.com/elwarrior100/modbus_data_plataform), an industrial
+pipeline Modbus RS-232 → OPC UA → lakeFS (bronze/silver/gold) with quality gates enforced by lakeFS hooks.
