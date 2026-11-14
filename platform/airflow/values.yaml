@@ -1,4 +1,4 @@
-# Values for the apache-airflow/airflow 1.22.0 chart (Airflow 3.2.2). See modbus_data_plataform docs/adr/007.
+# Values for the apache-airflow/airflow 1.22.0 chart, running Airflow 3.3.2 (newer than the chart's default 3.2.2). See modbus_data_plataform docs/adr/007.
 # Installed and kept in sync by Argo CD (platform/argocd/apps/airflow.yaml).
 executor: KubernetesExecutor
 
@@ -7,7 +7,7 @@ executor: KubernetesExecutor
 images:
   airflow:
     repository: apache/airflow
-    tag: "3.2.2"
+    tag: "3.3.2"                  # 3.2.2 had CRITICAL vulnerabilities (Airflow itself fixed in 3.3.0)
     pullPolicy: IfNotPresent
 
 config:
@@ -18,7 +18,7 @@ config:
     # project repository and refreshes it every refresh_interval seconds: a pushed DAG shows up without a new image.
     # (one line: the chart copies this value into airflow.cfg). tracking_ref is the SAME commit as MODBUS_PIPELINES_IMAGE:
     # DAG and task code move together, in one platform commit, so they can never drift apart.
-    dag_bundle_config_list: '[{"name": "modbus", "classpath": "airflow.providers.git.bundles.git.GitDagBundle", "kwargs": {"repo_url": "https://github.com/elwarrior100/modbus_data_plataform.git", "tracking_ref": "44008786e1c6878d7de0155979a9c0706199f05a", "subdir": "pipelines/dags", "refresh_interval": 120}}]'
+    dag_bundle_config_list: '[{"name": "modbus", "classpath": "airflow.providers.git.bundles.git.GitDagBundle", "kwargs": {"repo_url": "https://github.com/elwarrior100/modbus_data_plataform.git", "tracking_ref": "9e211d4341ab97f8609832a72ba40c19d13b05f4", "subdir": "pipelines/dags", "refresh_interval": 120}}]'
 
 # Metadata database: the "airflow" database in the platform PostgreSQL (role prepared by scripts/install-airflow.sh;
 # the connection Secret comes from the vault through the External Secrets Operator)
@@ -62,7 +62,7 @@ workers:
 env:
   - {name: LAKEFS_ENDPOINT, value: "http://lakefs.data.svc.cluster.local:8000"}
   # Image the modbus tasks run in (published by that repository's CI, tag = commit SHA). Bump it to deploy new code.
-  - {name: MODBUS_PIPELINES_IMAGE, value: "ghcr.io/elwarrior100/modbus-pipelines:44008786e1c6878d7de0155979a9c0706199f05a"}
+  - {name: MODBUS_PIPELINES_IMAGE, value: "ghcr.io/elwarrior100/modbus-pipelines:9e211d4341ab97f8609832a72ba40c19d13b05f4"}
 extraEnvFrom: |
   - secretRef: {name: lakefs-credentials}
 
