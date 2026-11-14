@@ -1,5 +1,5 @@
 # Values for the apache-airflow/airflow 1.22.0 chart (Airflow 3.2.2). See modbus_data_plataform docs/adr/007.
-# Install: scripts/install-airflow.sh
+# Installed and kept in sync by Argo CD (platform/argocd/apps/airflow.yaml).
 executor: KubernetesExecutor
 
 # The platform runs the OFFICIAL Airflow image: no project code is baked in. Each project brings its DAGs from its
@@ -71,8 +71,27 @@ logs:
     enabled: true
     existingClaim: airflow-logs-data
 
+# Installed by Argo CD (platform/argocd/apps/airflow.yaml), so the chart's Helm hooks become Argo CD hooks.
+migrateDatabaseJob:
+  useHelmHooks: false
+  applyCustomEnv: false
+  jobAnnotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+
+# The admin password comes from the airflow-admin Secret (created by the External Secrets Operator from the vault):
+# Kubernetes expands $(ADMIN_PASSWORD) from the container env, so the password is never written in git or values.
 createUserJob:
-  enabled: true                # the password comes via --set-file in install-airflow.sh, not from here
+  enabled: true
+  useHelmHooks: false
+  applyCustomEnv: false
+  jobAnnotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+  env:
+    - name: ADMIN_PASSWORD
+      valueFrom: {secretKeyRef: {name: airflow-admin, key: password}}
   defaultUser:
     username: admin
     email: admin@example.com
+    password: "$(ADMIN_PASSWORD)"

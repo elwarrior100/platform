@@ -1,0 +1,36 @@
+# Airflow (Helm chart) under Argo CD. Three sources: the chart, this repository's values ($values), and the
+# extra manifests in platform/k8s/airflow (the logs volume). Bumping MODBUS_PIPELINES_IMAGE in the values is now a
+# commit, with no manual helm upgrade. The database role is still prepared once by scripts/install-airflow.sh.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: airflow
+  namespace: argocd
+  labels:
+    platform/values-source: "true"   # sources 1 and 2 read this repository: each environment sets which branch
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  project: default
+  sources:
+    - repoURL: https://airflow.apache.org
+      chart: airflow
+      targetRevision: 1.22.0
+      helm:
+        releaseName: airflow
+        valueFiles: [$values/platform/airflow/values.yaml]
+    - repoURL: https://github.com/elwarrior100/platform.git
+      targetRevision: main
+      ref: values
+    - repoURL: https://github.com/elwarrior100/platform.git
+      targetRevision: main
+      path: platform/k8s/airflow
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: airflow
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
