@@ -65,9 +65,11 @@ cat <<'TXT'
 
 PASSWORDS (copied to the clipboard; paste with Cmd+V):
   Argo CD   (user: admin)
-    KUBECONFIG=$HOME/.lima/industrial/copied-from-guest/kubeconfig.yaml kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d | pbcopy
+    ./scripts/vault-get.sh platform-argocd-admin-local password | pbcopy      (kept in the OCI Vault)
   Airflow   (user: admin)
     KUBECONFIG=$HOME/.lima/industrial/copied-from-guest/kubeconfig.yaml kubectl -n airflow get secret airflow-admin -o jsonpath='{.data.password}' | base64 -d | pbcopy
+  OpenMetadata (user: admin@open-metadata.org)
+    ./scripts/vault-get.sh openmetadata-admin-local password | pbcopy        (kept in the OCI Vault)
   lakeFS    (user = access key; password = secret key)
     KUBECONFIG=$HOME/.lima/industrial/copied-from-guest/kubeconfig.yaml kubectl -n data get secret lakefs-auth -o jsonpath='{.data.ADMIN_ACCESS_KEY_ID}' | base64 -d | pbcopy
     KUBECONFIG=$HOME/.lima/industrial/copied-from-guest/kubeconfig.yaml kubectl -n data get secret lakefs-auth -o jsonpath='{.data.ADMIN_SECRET_ACCESS_KEY}' | base64 -d | pbcopy

@@ -20,7 +20,7 @@ umask 077
   echo
   echo "| Service | Address | User | Password |"
   echo "|---|---|---|---|"
-  echo "| Argo CD | http://localhost:8081 | admin | $(secret argocd argocd-initial-admin-secret password) |"
+  echo "| Argo CD | http://localhost:8081 | admin | $("$(dirname "$0")/vault-get.sh" platform-argocd-admin-local password) |"
   echo "| Airflow | http://localhost:8084 | admin | $(secret airflow airflow-admin password) |"
   echo "| lakeFS | http://localhost:8082 | $(secret data lakefs-auth ADMIN_ACCESS_KEY_ID) | $(secret data lakefs-auth ADMIN_SECRET_ACCESS_KEY) |"
   echo "| SeaweedFS | http://localhost:8888 | (no login) | |"
