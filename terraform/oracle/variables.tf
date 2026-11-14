@@ -60,3 +60,8 @@ variable "security_list_ocid" {
   description = "OCID of the security list of the public subnet, adopted by network.tf"
   type        = string
 }
+
+variable "alert_email" {
+  description = "Where OCI alarms are emailed (set in terraform.tfvars, not in git)"
+  type        = string
+}
