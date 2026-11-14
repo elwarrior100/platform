@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Prepares the Oracle VM (Always Free A1: 2 OCPU / 12 GB) and installs k3s. Idempotent.
+# Run from the Mac, over Tailscale:  ./envs/oracle/bootstrap-vm.sh
+# Afterwards the kubeconfig is at ~/.kube/oracle.yaml, pointing at https://platform-oracle:6443 (Tailscale only:
+# the VM has no inbound port open to the internet, see terraform/oracle/network.tf).
+set -euo pipefail
+HOST="${ORACLE_HOST:-platform-oracle}"
+K3S_VERSION="v1.36.5+k3s1"            # same as the local cluster
+
+ssh -o BatchMode=yes "ubuntu@$HOST" "K3S_VERSION='$K3S_VERSION' HOST='$HOST' bash -s" <<'REMOTE'
+set -euo pipefail
+# 4 GB of swap: a safety margin for the OS on 12 GB (Kubernetes keeps pods off swap by default).
+if ! swapon --show | grep -q /swapfile; then
+  sudo fallocate -l 4G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile >/dev/null && sudo swapon /swapfile
+  grep -q '^/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab >/dev/null
+fi
+echo 'vm.swappiness=10' | sudo tee /etc/sysctl.d/99-swap.conf >/dev/null
+echo 'vm.max_map_count=262144' | sudo tee /etc/sysctl.d/99-opensearch.conf >/dev/null   # OpenSearch needs it
+sudo sysctl --system >/dev/null
+
+# k3s, pinned. The API certificate also covers the Tailscale name and IP, so kubectl works from the Mac.
+if ! command -v k3s >/dev/null || ! k3s --version | grep -q "$K3S_VERSION"; then
+  TS_IP="$(tailscale ip -4)"
+  curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="$K3S_VERSION" sh -s - server \
+    --write-kubeconfig-mode 644 --tls-san "$HOST" --tls-san "$TS_IP" >/dev/null
+fi
+for _ in $(seq 1 30); do sudo k3s kubectl get nodes 2>/dev/null | grep -q ' Ready' && break; sleep 5; done
+echo "k3s: $(k3s --version | head -1) | swap: $(swapon --show --noheadings | awk '{print $3}') | kernel: $(uname -r)"
+REMOTE
+
+mkdir -p "$HOME/.kube"
+ssh -o BatchMode=yes "ubuntu@$HOST" 'cat /etc/rancher/k3s/k3s.yaml' | sed "s#https://127.0.0.1:6443#https://$HOST:6443#" > "$HOME/.kube/oracle.yaml"
+chmod 600 "$HOME/.kube/oracle.yaml"
+KUBECONFIG="$HOME/.kube/oracle.yaml" kubectl get nodes -o wide
