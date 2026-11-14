@@ -5,7 +5,7 @@ metadata:
   namespace: ot
 data:
   scenarios.yaml: |
-    # Cenários agendados no arranque. Exemplo:
+    # Scenarios scheduled at startup. Example:
     # scenarios:
     #   - {asset: PUMP-01, kind: drift, start_s: 300, duration_s: 3600}
     #   - {asset: "*", kind: comms_gap, start_s: 900, duration_s: 120}

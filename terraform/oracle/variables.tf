@@ -1,10 +1,10 @@
 variable "compartment_id" {
-  description = "OCID do tenancy (root compartment)"
+  description = "Tenancy OCID (root compartment)"
   type        = string
 }
 
 variable "subnet_id" {
-  description = "OCID da subnet PÚBLICA"
+  description = "OCID of the PUBLIC subnet"
   type        = string
 }
 
@@ -18,8 +18,8 @@ variable "instance_name" {
   default = "modbus-platform"
 }
 
-# Os valores por omissão seguem o perfil core+gov do plano (docs/PLAN.md §9, ~16 GB) e cabem no Always Free
-# (limite atual da conta: 2 OCPU e 12 GB de RAM no total, somando TODAS as instâncias A1). Se já tens outra VM A1, baixa isto.
+# Defaults match the whole Always Free Ampere A1 quota (current account limit: 2 OCPU and 12 GB RAM
+# in total, summed over ALL A1 instances). Lower them if another A1 VM exists.
 variable "ocpus" {
   type    = number
   default = 2
@@ -33,4 +33,9 @@ variable "memory_in_gbs" {
 variable "boot_volume_size_in_gbs" {
   type    = number
   default = 100
+}
+
+variable "instance_ocid" {
+  description = "OCID of the existing instance (created in the console) that imports.tf adopts"
+  type        = string
 }

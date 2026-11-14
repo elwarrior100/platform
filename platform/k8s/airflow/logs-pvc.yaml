@@ -1,5 +1,5 @@
-# Volume dos logs das tarefas do Airflow. É criado aqui (e não pelo chart) porque o chart pede-o em
-# ReadWriteMany e o provisionador local-path do k3s só suporta ReadWriteOnce. Chega: está tudo no mesmo nó.
+# Volume for Airflow task logs. Created here (not by the chart) because the chart asks for
+# ReadWriteMany and the k3s local-path provisioner only supports ReadWriteOnce. Enough: everything runs on one node.
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:

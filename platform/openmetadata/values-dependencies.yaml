@@ -1,5 +1,5 @@
-# Dependências do OpenMetadata: só o OpenSearch. O MySQL e o Airflow do chart ficam desligados
-# (usamos o PostgreSQL que já temos e o orquestrador nativo de Kubernetes). Ver docs/adr/009-openmetadata.md.
+# OpenMetadata dependencies: OpenSearch only. The chart's MySQL and Airflow are disabled
+# (we use the existing PostgreSQL and the native Kubernetes orchestrator). See modbus_data_plataform docs/adr/009.
 mysql:
   enabled: false
 airflow:

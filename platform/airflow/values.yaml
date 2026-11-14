@@ -1,25 +1,25 @@
-# Valores do chart apache-airflow/airflow 1.22.0 (Airflow 3.2.2). Ver docs/adr/007-airflow-e-silver.md.
-# Instalar: platform/scripts/install-airflow.sh
+# Values for the apache-airflow/airflow 1.22.0 chart (Airflow 3.2.2). See modbus_data_plataform docs/adr/007.
+# Install: scripts/install-airflow.sh
 executor: KubernetesExecutor
 
 images:
   airflow:
-    repository: localhost/airflow-pipelines     # imagem própria, construída com platform/scripts/build-image.sh
+    repository: localhost/airflow-pipelines     # our own image, built with scripts/build-image.sh
     tag: "0.4.0"
     pullPolicy: IfNotPresent
 
-# Base de metadados: a base "airflow" no PostgreSQL que já existe (criada por bootstrap-postgres-airflow.sh)
+# Metadata database: the "airflow" database in the existing PostgreSQL (created by install-airflow.sh)
 postgresql:
   enabled: false
 data:
   metadataSecretName: airflow-metadata
 
-# Chaves fixas, geradas uma vez e guardadas em Secrets (sem isto mudavam a cada instalação)
+# Fixed keys, generated once and kept in Secrets (otherwise they would change on every install)
 fernetKeySecretName: airflow-fernet
 apiSecretKeySecretName: airflow-api-secret
 jwtSecretName: airflow-jwt
 
-# O que não vamos usar (poupa memória)
+# What we do not use (saves memory)
 redis:
   enabled: false
 statsd:
@@ -40,26 +40,26 @@ dagProcessor:
     requests: {cpu: 50m, memory: 384Mi}
     limits: {memory: 768Mi}
 workers:
-  kubernetes:                  # com o KubernetesExecutor, são os limites de cada pod de tarefa
+  kubernetes:                  # with the KubernetesExecutor these are the limits of each task pod
     resources:
       requests: {cpu: 100m, memory: 384Mi}
       limits: {memory: 1Gi}
 
-# Ligação ao lakeFS para os pods de tarefa (o Secret é copiado por install-airflow.sh)
+# lakeFS connection for task pods (the Secret is copied by install-airflow.sh)
 env:
   - {name: LAKEFS_ENDPOINT, value: "http://lakefs.data.svc.cluster.local:8000"}
 extraEnvFrom: |
   - secretRef: {name: lakefs-credentials}
 
-# Os pods de tarefa desaparecem quando acabam: os logs têm de ficar num volume. O volume é criado por
-# platform/k8s/airflow/logs-pvc.yaml (o chart pediria ReadWriteMany, que o local-path não suporta).
+# Task pods disappear when they finish: logs must live on a volume. The volume is created by
+# platform/k8s/airflow/logs-pvc.yaml (the chart would ask for ReadWriteMany, which local-path does not support).
 logs:
   persistence:
     enabled: true
     existingClaim: airflow-logs-data
 
 createUserJob:
-  enabled: true                # a palavra-passe entra por --set-file em install-airflow.sh, não está aqui
+  enabled: true                # the password comes via --set-file in install-airflow.sh, not from here
   defaultUser:
     username: admin
     email: admin@example.com

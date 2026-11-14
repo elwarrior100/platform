@@ -19,7 +19,7 @@ spec:
     namespace: data
   syncPolicy:
     automated:
-      prune: false          # dados: um manifesto apagado do git não apaga a base de dados
+      prune: false          # data: a manifest deleted from git must not delete the database
       selfHeal: true
     syncOptions:
       - RespectIgnoreDifferences=true
@@ -27,4 +27,4 @@ spec:
     - group: apps
       kind: StatefulSet
       jsonPointers:
-        - /spec/volumeClaimTemplates   # campos preenchidos pelo Kubernetes (volumeMode, status)
+        - /spec/volumeClaimTemplates   # fields filled in by Kubernetes (volumeMode, status)

@@ -1,5 +1,5 @@
-# Aplicação "raiz" (app-of-apps): gere as aplicações em platform/argocd/apps/.
-# Aplicar uma vez por cluster: kubectl apply -f platform/argocd/root-app.yaml
+# "Root" application (app-of-apps): manages the applications in platform/argocd/apps/.
+# Apply once per cluster: kubectl apply -f platform/argocd/root-app.yaml
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:

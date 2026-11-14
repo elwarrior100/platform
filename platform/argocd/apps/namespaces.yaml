@@ -17,5 +17,5 @@ spec:
     server: https://kubernetes.default.svc
   syncPolicy:
     automated:
-      prune: false          # nunca apagar um namespace (levava os dados com ele)
+      prune: false          # never delete a namespace (it would take the data with it)
       selfHeal: true

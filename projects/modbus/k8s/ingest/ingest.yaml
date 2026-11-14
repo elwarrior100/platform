@@ -1,5 +1,5 @@
-# Collector (OPC UA -> spool) e writer (spool -> bronze no lakeFS), agora em Deployments separados:
-# o spool vive no PostgreSQL (ADR-006), por isso já não precisam de partilhar um volume nem um pod.
+# Collector (OPC UA -> spool) and writer (spool -> bronze in lakeFS), in separate Deployments:
+# the spool lives in PostgreSQL (ADR-006), so they no longer need to share a volume or a pod.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -8,7 +8,7 @@ metadata:
 spec:
   replicas: 1
   strategy:
-    type: Recreate        # nunca dois collectors a subscrever ao mesmo tempo (duplicariam o trabalho)
+    type: Recreate        # never two collectors subscribing at once (they would duplicate the work)
   selector:
     matchLabels: {app: collector}
   template:
@@ -36,7 +36,7 @@ metadata:
 spec:
   replicas: 1
   strategy:
-    type: Recreate        # nunca dois writers a formar lotes ao mesmo tempo
+    type: Recreate        # never two writers forming batches at once
   selector:
     matchLabels: {app: writer}
   template:

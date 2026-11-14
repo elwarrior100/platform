@@ -1,5 +1,5 @@
-# OpenMetadata 2.0.7 sobre o PostgreSQL existente e o orquestrador nativo de Kubernetes (um Job por ingestão).
-# A palavra-passe da base vem do Secret `openmetadata-db` (criado por install-openmetadata.sh), nunca daqui.
+# OpenMetadata 2.0.7 on the existing PostgreSQL and the native Kubernetes orchestrator (one Job per ingestion).
+# The database password comes from the `openmetadata-db` Secret (created by install-openmetadata.sh), never from here.
 image:
   pullPolicy: IfNotPresent
 openmetadata:

@@ -11,7 +11,7 @@ data "oci_core_images" "ubuntu_arm" {
   sort_order               = "DESC"
 }
 
-resource "oci_core_instance" "plataforma" {
+resource "oci_core_instance" "platform" {
   availability_domain = data.oci_identity_availability_domains.ads.availability_domains[0].name
   compartment_id      = var.compartment_id
   display_name        = var.instance_name
@@ -38,15 +38,15 @@ resource "oci_core_instance" "plataforma" {
   }
 
   lifecycle {
-    # uma imagem Ubuntu mais recente não pode forçar a recriação da VM (e a perda dos dados)
+    # a newer Ubuntu image must not force the VM to be recreated (and its data lost)
     ignore_changes = [source_details[0].source_id]
   }
 }
 
 output "public_ip" {
-  value = oci_core_instance.plataforma.public_ip
+  value = oci_core_instance.platform.public_ip
 }
 
 output "ssh" {
-  value = "ssh ubuntu@${oci_core_instance.plataforma.public_ip}"
+  value = "ssh ubuntu@${oci_core_instance.platform.public_ip}"
 }

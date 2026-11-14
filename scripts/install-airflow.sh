@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Prepara os segredos e a base de dados, e instala (ou atualiza) o Airflow. Idempotente.
-# Nenhuma palavra-passe passa por argumentos nem aparece no ecrã.
+# Prepares the secrets and the database, and installs (or upgrades) Airflow. Idempotent.
+# No password goes through arguments or appears on screen.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 export KUBECONFIG="${KUBECONFIG:-$HOME/.lima/industrial/copied-from-guest/kubeconfig.yaml}"
@@ -31,7 +31,7 @@ secret_exists airflow-api-secret || kubectl -n "$NS" create secret generic airfl
 secret_exists airflow-jwt || kubectl -n "$NS" create secret generic airflow-jwt --from-literal=jwt-secret="$(rand)"
 secret_exists airflow-admin || kubectl -n "$NS" create secret generic airflow-admin --from-literal=password="$(rand)"
 
-# credenciais do lakeFS: copiadas do namespace ingest (nunca passam pelo ecrã)
+# lakeFS credentials: copied from the ingest namespace (never shown on screen)
 secret_exists lakefs-credentials || kubectl -n ingest get secret lakefs-credentials -o json \
   | python3 -c 'import json,sys; d=json.load(sys.stdin); print(json.dumps({"apiVersion":"v1","kind":"Secret","metadata":{"name":"lakefs-credentials","namespace":"airflow"},"data":d["data"]}))' \
   | kubectl apply -f - >/dev/null

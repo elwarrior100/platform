@@ -1,11 +1,11 @@
-# Valores do chart argo/argo-cd 10.11.1 (Argo CD v3.5.6).
-# Instalar: platform/scripts/install-argocd.sh
+# Values for the argo/argo-cd 10.11.1 chart (Argo CD v3.5.6).
+# Install: scripts/install-argocd.sh
 configs:
   params:
-    server.insecure: true        # sem TLS no serviço; o acesso é por port-forward (sem Ingress)
+    server.insecure: true        # no TLS on the service; access is via port-forward (no Ingress)
 
 dex:
-  enabled: false                 # sem login externo (SSO)
+  enabled: false                 # no external login (SSO)
 notifications:
   enabled: false
 

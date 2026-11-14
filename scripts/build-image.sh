@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Constrói uma imagem dentro da VM Lima (podman) e importa-a no k3s.
-# Uso: build-image.sh <pasta-com-Dockerfile> <nome:tag>
+# Builds an image inside the Lima VM (podman) and imports it into k3s.
+# Usage: build-image.sh <folder-with-Dockerfile> <name:tag>
 set -euo pipefail
 
-CTX="${1:?pasta de contexto}"
-IMAGE="${2:?nome:tag}"
+CTX="${1:?build context folder}"
+IMAGE="${2:?name:tag}"
 VM="${LIMA_INSTANCE:-industrial}"
 REMOTE="/tmp/build-$(basename "$IMAGE" | tr ':/' '--')"
 
@@ -19,4 +19,4 @@ tar -C "$CTX" --exclude=.venv --exclude=__pycache__ --exclude=.pytest_cache -cf 
 
 limactl shell "$VM" -- sudo podman build -t "localhost/$IMAGE" "$REMOTE"
 limactl shell "$VM" -- sh -c "sudo podman save localhost/$IMAGE | sudo k3s ctr images import -"
-echo "imagem localhost/$IMAGE disponível no k3s"
+echo "image localhost/$IMAGE available in k3s"
