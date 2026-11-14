@@ -1,0 +1,14 @@
+# Argo CD's built-in "default" project allows any repository, any destination and any kind. Nothing uses it (the root
+# application is in bootstrap, the platform in platform, each project in its own), so it is emptied here: an
+# application that lands in it by mistake cannot deploy anything. Argo CD does not allow deleting it, only this.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: default
+  namespace: argocd
+spec:
+  description: Unused on purpose (see platform/argocd/projects/default.yaml)
+  sourceRepos: []
+  destinations: []
+  clusterResourceWhitelist: []
+  namespaceResourceWhitelist: []
