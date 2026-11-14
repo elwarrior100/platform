@@ -39,7 +39,8 @@ kube-state-metrics:
     requests: {cpu: 10m, memory: 48Mi}
     limits: {memory: 128Mi}
 prometheus-node-exporter:
-  hostNetwork: false             # the admission policy forbids hostNetwork; host metrics still come from /proc and /sys
+  hostNetwork: false             # the admission policies forbid hostNetwork and hostPID outside kube-system;
+  hostPID: false                 # host CPU, memory, disk and network metrics still come from /proc and /sys
   resources:
     requests: {cpu: 10m, memory: 24Mi}
     limits: {memory: 64Mi}

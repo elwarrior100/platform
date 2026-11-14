@@ -40,7 +40,7 @@ Seen on 2026-11-14 after the graceful-shutdown reboot test. Check newer Airflow 
 3. Set the spool batch back to `pending` and scale the writer to 1. Reconcile (project: `tests/phase3/run.sh`).
 
 ## Restore a database
-- Backups: `platform-backups/<date>/` in Object Storage (nightly, 14 days). Prove they restore at any time:
+- Backups: `platform-backups/<date>/<HHMMSS>/` in Object Storage (one prefix per run, nightly, kept 14 days). Prove they restore at any time:
   `./scripts/pg-restore-test.sh` (restores into scratch databases and compares row counts).
 - Real restore: scale the application to 0, `pg_restore --clean -d <db>` from the dump (same image as Postgres),
   scale back up.

@@ -1,7 +1,7 @@
 # Block the cloud metadata endpoint (169.254.169.254) for every pod in every workload namespace. On Oracle that endpoint
-# hands out instance-principal credentials that can read the whole vault, so only two namespaces, NOT listed here, may
-# reach it: external-secrets (the operator) and backup (the nightly dump). The exemption is the namespace, not a pod
-# label, so a workload cannot grant itself access. Everything else is still allowed: only that one address is removed.
+# hands out instance-principal credentials that can read the whole vault, so it is blocked in each namespace listed here.
+# Namespaces NOT listed can reach it: on purpose external-secrets (the operator) and backup (the nightly dump), plus
+# kube-system. A new workload namespace must be added here (the exemption is the namespace, never a pod label). Everything else is still allowed: only that one address is removed.
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
