@@ -43,7 +43,7 @@ Seen on 2026-11-14 after the graceful-shutdown reboot test. Check newer Airflow 
 | Alarm | First look |
 |---|---|
 | VM not reporting | `ssh ubuntu@platform-oracle`; if no answer, OCI console: instance state, serial console |
-| CPU > 90% / memory > 92% | Grafana (`./scripts/ui.sh`, :3000), "Kubernetes / Compute Resources / Namespace"; `kubectl top pods -A` |
+| CPU > 90% / memory > 92% | Grafana (`http://grafana.100.108.9.15.sslip.io`, or `./scripts/ui.sh` :3000), "Kubernetes / Compute Resources / Namespace"; `kubectl top pods -A` |
 | no successful backup in 26 h | `kubectl -n backup get jobs`; logs of the newest `pg-backup` job |
 | no successful lake copy in 26 h | `kubectl -n backup get jobs`; logs of the newest `lake-sync` job (it refuses to overwrite: an "immutable" error means an object changed, which lakeFS objects never should) |
 | silver not updated for 3 h | Airflow `silver_hourly` runs (a G2 fail is expected for incomplete hours); writer logs; `kubectl -n ops logs` of the last freshness job |
@@ -92,3 +92,15 @@ Pods are refused until the namespace has the label `platform/network-reviewed` (
 network-reviewed-namespaces). First write its NetworkPolicies (at least `deny-cloud-metadata`, see
 `platform/k8s/network-policies`), then add the namespace to `platform/k8s/00-namespaces.yaml` with the label and a
 comment saying which policy applies.
+
+## SeaweedFS (storage emergencies only)
+Not in the browser and not in `ui.sh`, on purpose: the filer has no login and can delete lake objects behind lakeFS'
+back (no gates, no commit, no history). To look at the lake objects use lakeFS. For the storage itself:
+```
+kubectl -n data exec -it seaweedfs-0 -- weed shell
+> s3.bucket.list            # buckets and their size
+> fs.du /buckets/lake       # size of the lake bucket
+> volume.list               # volumes and free space
+```
+Read-only commands only. Anything that writes or deletes here (`fs.rm`, `volume.delete`...) bypasses lakeFS:
+restore from the backups instead (section "Restore the lake").

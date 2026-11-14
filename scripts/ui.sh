@@ -7,11 +7,13 @@ set -uo pipefail
 export KUBECONFIG="${KUBECONFIG:-$HOME/.lima/industrial/copied-from-guest/kubeconfig.yaml}"
 MODE="${1:-}"
 
+# The everyday way in is the Ingress (http://<service>.localhost, or .100.108.9.15.sslip.io on Oracle); these tunnels
+# are the fallback. SeaweedFS is left out on purpose: its filer has no login and can delete lake objects behind
+# lakeFS' back. For storage emergencies use weed shell (docs/runbook.md, "SeaweedFS").
 # name | namespace | service | local port | service port | path to test (- = TCP only)
 UIS=(
   "Argo CD|argocd|svc/argocd-server|8081|80|/"
   "lakeFS|data|svc/lakefs|8082|8000|/"
-  "SeaweedFS (files)|data|pod/seaweedfs-0|8888|8888|/"
   "Simulator (control)|ot|svc/ot-edge|8083|8080|/health"
   "Airflow|airflow|svc/airflow-api-server|8084|8080|/"
   "OpenMetadata|openmetadata|svc/openmetadata|8585|8585|/"

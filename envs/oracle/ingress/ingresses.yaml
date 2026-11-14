@@ -2,7 +2,8 @@
 # Oracle: the Tailscale IP of the VM. sslip.io answers <anything>.100.108.9.15.sslip.io with 100.108.9.15, a private
 # tailnet address, so only devices on your tailnet can open these URLs. The OCI firewall keeps port 80 closed to the internet.
 # HTTP only: on Oracle the traffic is already encrypted end to end by Tailscale (WireGuard). SeaweedFS has no login and
-# is deliberately not published. scripts/ui.sh (port-forward tunnels) still works as an alternative.
+# is deliberately not published. scripts/ui.sh (port-forward tunnels) is the fallback;
+# SeaweedFS is reached only with kubectl exec + weed shell (docs/runbook.md).
 ---
 # Airflow: http://airflow.100.108.9.15.sslip.io
 apiVersion: networking.k8s.io/v1
