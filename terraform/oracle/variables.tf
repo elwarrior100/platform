@@ -39,3 +39,14 @@ variable "instance_ocid" {
   description = "OCID of the existing instance (created in the console) that imports.tf adopts"
   type        = string
 }
+
+variable "eso_reader_public_key_path" {
+  description = "PUBLIC key of the eso-reader API key (the private key never leaves ~/.oci/eso-reader/)"
+  type        = string
+  default     = "~/.oci/eso-reader/key_public.pem"
+}
+
+variable "eso_reader_email" {
+  description = "Primary email for the eso-reader user (Identity Domains require one). Set in terraform.tfvars, not in git"
+  type        = string
+}

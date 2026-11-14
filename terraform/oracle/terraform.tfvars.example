@@ -1,3 +1,4 @@
 # Copy to terraform.tfvars and fill in. terraform.tfvars is not committed to git.
 compartment_id = "ocid1.tenancy.oc1..xxxxx"
 subnet_id      = "ocid1.subnet.oc1.eu-madrid-1.xxxxx"
+eso_reader_email = "you@example.com"
