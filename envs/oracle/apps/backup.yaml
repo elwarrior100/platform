@@ -4,6 +4,8 @@ kind: Application
 metadata:
   name: backup
   namespace: argocd
+  labels:
+    platform/git-source: "true"     # reads this repository: each environment sets which branch
   annotations:
     argocd.argoproj.io/sync-wave: "2"
 spec:

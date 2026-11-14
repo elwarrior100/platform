@@ -1,5 +1,5 @@
-# Root application (app-of-apps) for the oracle cluster: the shared platform apps (platform/argocd/apps) plus
-# this environment's own apps (envs/oracle/apps). Apply once per cluster:
+# Root application (app-of-apps) for the oracle cluster. envs/oracle/apps is a Kustomization: the shared
+# applications (platform/argocd/apps) plus this environment's own. Apply once per cluster:
 #   kubectl apply -f envs/oracle/root-app.yaml
 apiVersion: argoproj.io/v1alpha1
 kind: Application
@@ -8,13 +8,10 @@ metadata:
   namespace: argocd
 spec:
   project: default
-  sources:
-    - repoURL: https://github.com/elwarrior100/platform.git
-      targetRevision: main
-      path: platform/argocd/apps
-    - repoURL: https://github.com/elwarrior100/platform.git
-      targetRevision: main
-      path: envs/oracle/apps
+  source:
+    repoURL: https://github.com/elwarrior100/platform.git
+    targetRevision: oracle
+    path: envs/oracle/apps
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd

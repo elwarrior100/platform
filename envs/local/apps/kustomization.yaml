@@ -1,0 +1,6 @@
+# Local cluster: the shared applications plus its own secret store. Follows the main branch (development).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../../platform/argocd/apps
+  - secret-store.yaml

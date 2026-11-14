@@ -1,0 +1,10 @@
+# The applications every cluster runs. Each environment (envs/<env>/apps) includes this list and adds its own.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - data.yaml
+  - external-secrets.yaml
+  - namespaces.yaml
+  - network-policies.yaml
+  - projects.yaml
+  - secrets.yaml
