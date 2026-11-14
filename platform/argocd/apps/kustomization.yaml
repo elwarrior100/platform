@@ -12,3 +12,4 @@ resources:
   - secrets.yaml
   - openmetadata-dependencies.yaml
   - openmetadata.yaml
+  - ../projects

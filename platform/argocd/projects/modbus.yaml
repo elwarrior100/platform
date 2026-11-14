@@ -1,0 +1,21 @@
+# Argo CD project for the modbus project: what its applications may deploy, and where. The ApplicationSet puts every
+# app under projects/<project>/k8s/* into the AppProject named after <project>, so a project can only touch its own
+# namespaces and only from this repository, never the platform namespaces (data, argocd, external-secrets...).
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: modbus
+  namespace: argocd
+spec:
+  description: Modbus RS-232 -> OPC UA -> lakeFS pipeline (github.com/elwarrior100/modbus_data_plataform)
+  sourceRepos:
+    - https://github.com/elwarrior100/platform.git
+  destinations:
+    - {server: https://kubernetes.default.svc, namespace: ingest}
+    - {server: https://kubernetes.default.svc, namespace: ot}
+  clusterResourceWhitelist: []          # no cluster-wide resources (no namespaces, CRDs, ClusterRoles)
+  namespaceResourceWhitelist:
+    - {group: "", kind: "*"}
+    - {group: apps, kind: "*"}
+    - {group: batch, kind: "*"}
+    - {group: external-secrets.io, kind: ExternalSecret}

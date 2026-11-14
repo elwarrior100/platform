@@ -15,6 +15,8 @@ spec:
         revision: main
         directories:
           - path: projects/*/k8s/*
+  syncPolicy:
+    preserveResourcesOnDeletion: true   # deleting the ApplicationSet never deletes a project's workloads
   template:
     metadata:
       name: "{{ .path.basename }}"
@@ -24,7 +26,7 @@ spec:
       annotations:
         argocd.argoproj.io/sync-wave: "2"     # after the platform (wave 1)
     spec:
-      project: default
+      project: "{{ index .path.segments 1 }}"   # the AppProject named after the project (platform/argocd/projects)
       source:
         repoURL: https://github.com/elwarrior100/platform.git
         targetRevision: main
