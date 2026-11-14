@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Cria uma nota no teu Mac com os utilizadores e palavras-passe das interfaces.
 # A nota fica FORA do repositório (por omissão em ~/Documents) e só tu a podes ler (chmod 600).
-# Uso: ./platform/scripts/save-credentials.sh [caminho-da-nota]
+# Uso: ./scripts/save-credentials.sh [caminho-da-nota]
 set -euo pipefail
 export KUBECONFIG="${KUBECONFIG:-$HOME/.lima/industrial/copied-from-guest/kubeconfig.yaml}"
 NOTE="${1:-$HOME/Documents/modbus-plataforma-acessos.md}"
@@ -16,7 +16,7 @@ umask 077
 {
   echo "# Acessos da plataforma (gerado em $(date '+%Y-%m-%d %H:%M'))"
   echo
-  echo "Abrir os túneis: \`./platform/scripts/ui.sh --open\`. As palavras-passe mudam se o cluster for recriado: volta a correr \`save-credentials.sh\`."
+  echo "Abrir os túneis: \`./scripts/ui.sh --open\`. As palavras-passe mudam se o cluster for recriado: volta a correr \`save-credentials.sh\`."
   echo
   echo "| Serviço | Endereço | Utilizador | Palavra-passe |"
   echo "|---|---|---|---|"

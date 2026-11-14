@@ -2,7 +2,7 @@
 # Prepara a base de dados e os segredos e instala (ou atualiza) o OpenMetadata. Idempotente.
 # Nenhuma palavra-passe passa por argumentos nem aparece no ecrã. Ver docs/adr/009-openmetadata.md.
 set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 export KUBECONFIG="${KUBECONFIG:-$HOME/.lima/industrial/copied-from-guest/kubeconfig.yaml}"
 NS=openmetadata
 VERSION=2.0.7

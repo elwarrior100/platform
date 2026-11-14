@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Abre túneis para as interfaces do cluster e diz onde clicar.
-#   ./platform/scripts/ui.sh           abre os túneis e fica a correr (Ctrl-C fecha tudo)
-#   ./platform/scripts/ui.sh --open    idem, e abre as páginas no browser
-#   ./platform/scripts/ui.sh --check   abre, testa cada uma, imprime o resultado e sai
+#   ./scripts/ui.sh           abre os túneis e fica a correr (Ctrl-C fecha tudo)
+#   ./scripts/ui.sh --open    idem, e abre as páginas no browser
+#   ./scripts/ui.sh --check   abre, testa cada uma, imprime o resultado e sai
 set -uo pipefail
 export KUBECONFIG="${KUBECONFIG:-$HOME/.lima/industrial/copied-from-guest/kubeconfig.yaml}"
 MODE="${1:-}"

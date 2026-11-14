@@ -2,7 +2,7 @@
 # Prepara os segredos e a base de dados, e instala (ou atualiza) o Airflow. Idempotente.
 # Nenhuma palavra-passe passa por argumentos nem aparece no ecrã.
 set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 export KUBECONFIG="${KUBECONFIG:-$HOME/.lima/industrial/copied-from-guest/kubeconfig.yaml}"
 NS=airflow
 CHART_VERSION=1.22.0

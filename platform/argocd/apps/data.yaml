@@ -8,7 +8,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: git@github.com:elwarrior100/modbus_data_plataform.git
+    repoURL: https://github.com/elwarrior100/plataform.git
     targetRevision: main
     path: platform/k8s
     directory:

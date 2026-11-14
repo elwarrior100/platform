@@ -23,4 +23,4 @@ limactl shell "$VM" -- sync
 
 echo "3/3 a parar a VM…"
 limactl stop "$VM"
-echo "VM parada de forma limpa. Para voltar: ./platform/scripts/vm-start.sh"
+echo "VM parada de forma limpa. Para voltar: ./scripts/vm-start.sh"

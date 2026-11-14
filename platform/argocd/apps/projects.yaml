@@ -1,0 +1,38 @@
+# Um projeto = uma pasta em projects/<projeto>/k8s/<componente>/. Este ApplicationSet cria uma aplicação do Argo CD
+# por componente, sem mexer na plataforma (ADR-010). O nome da aplicação é o do componente (ingest, ot), igual ao
+# que existia antes, e o namespace também.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: projects
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - git:
+        repoURL: https://github.com/elwarrior100/plataform.git
+        revision: main
+        directories:
+          - path: projects/*/k8s/*
+  template:
+    metadata:
+      name: "{{ .path.basename }}"
+      namespace: argocd
+      labels:
+        project: "{{ index .path.segments 1 }}"
+      annotations:
+        argocd.argoproj.io/sync-wave: "2"     # depois da plataforma (wave 1)
+    spec:
+      project: default
+      source:
+        repoURL: https://github.com/elwarrior100/plataform.git
+        targetRevision: main
+        path: "{{ .path.path }}"
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: "{{ .path.basename }}"
+      syncPolicy:
+        automated:
+          prune: false        # o spool do ingest guarda amostras ainda não escritas no lakeFS
+          selfHeal: true
