@@ -54,9 +54,9 @@ kube-router adds a new pod to the network-policy allow-lists a few seconds after
 first connection (pg-backup waits for `pg_isready`). Symptom: "Connection refused" that disappears on a retry.
 
 ## Restore the lake (lakeFS metadata + objects)
-Drill first, at any time and without touching anything live: `KUBECONFIG=~/.kube/oracle.yaml ./scripts/lake-restore-test.sh`
-(rebuilds lakeFS from the newest dump and the object copy in a throw-away namespace, then reads every object on
-`main`). The real restore:
+It is drilled every day at 04:15 UTC (`ops/lake-restore-drill`: rebuilds lakeFS from the newest dump and the object
+copy inside one throw-away pod, compares the MD5 of every object on `main`; alarm after 2 days without a pass).
+Run it now, without touching anything live: `KUBECONFIG=~/.kube/oracle.yaml ./scripts/lake-restore-test.sh`. The real restore:
 1. Stop writers: scale `ingest/writer` and pause the Airflow DAGs.
 2. Objects: `rclone copy oci:platform-lake-backup lake:lake` (same configuration as the lake-sync job, reversed),
    from a pod in the `backup` namespace labelled `app: lake-sync` (SeaweedFS only accepts the lake copy and lakeFS).
@@ -86,3 +86,9 @@ Drill first, at any time and without touching anything live: `KUBECONFIG=~/.kube
 The backup and ops jobs may only reach the Oracle Services Network ranges of eu-madrid-1. `validate.yml` runs
 `./scripts/check-oci-cidrs.sh` every Monday; if it fails (or the backup alarms fire with "connection timed out"),
 copy the `+` lines it prints into the `oci-osn-cidrs` block of both egress policies and promote.
+
+## A new namespace
+Pods are refused until the namespace has the label `platform/network-reviewed` (admission rule
+network-reviewed-namespaces). First write its NetworkPolicies (at least `deny-cloud-metadata`, see
+`platform/k8s/network-policies`), then add the namespace to `platform/k8s/00-namespaces.yaml` with the label and a
+comment saying which policy applies.
