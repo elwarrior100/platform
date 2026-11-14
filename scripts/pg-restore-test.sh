@@ -36,7 +36,10 @@ spec:
               echo "latest backup: \$LATEST"
               oci os object bulk-download -ns \$NS -bn platform-backups --prefix "\$LATEST/" --download-dir /dump >/dev/null
               # the VM must NOT be able to delete a backup (policy allows create/read only)
-              if oci os object delete -ns \$NS -bn platform-backups --name "\$LATEST/globals.sql" --force >/dev/null 2>&1; then
+              # try to delete a canary object of our own, never a real backup (the lifecycle removes canaries after 14 days)
+              echo canary > /tmp/canary && oci os object put -ns \$NS -bn platform-backups --file /tmp/canary --name "_test/canary-\$(date +%s)" --force >/dev/null
+              CANARY=\$(oci os object list -ns \$NS -bn platform-backups --prefix _test/ --query 'data[-1].name' --raw-output)
+              if oci os object delete -ns \$NS -bn platform-backups --name "\$CANARY" --force >/dev/null 2>&1; then
                 echo "DELETE ALLOWED (policy too wide)"; exit 1
               else
                 echo "delete refused, as intended"
