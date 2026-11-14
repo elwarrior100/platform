@@ -2,11 +2,22 @@
 # Install: scripts/install-airflow.sh
 executor: KubernetesExecutor
 
+# The platform runs the OFFICIAL Airflow image: no project code is baked in. Each project brings its DAGs from its
+# own repository (DAG bundles, below) and runs its tasks in its own image (pod_override in the DAG).
 images:
   airflow:
-    repository: localhost/airflow-pipelines     # our own image, built with scripts/build-image.sh
-    tag: "0.4.0"
+    repository: apache/airflow
+    tag: "3.2.2"
     pullPolicy: IfNotPresent
+
+config:
+  core:
+    parallelism: 2                # at most 2 task pods at once on the whole platform (2 OCPU on Oracle)
+  dag_processor:
+    # One bundle per project. GitDagBundle (apache-airflow-providers-git, shipped in the official image) clones the
+    # project repository and refreshes it every refresh_interval seconds: a pushed DAG shows up without a new image.
+    # (one line: the chart copies this value into airflow.cfg)
+    dag_bundle_config_list: '[{"name": "modbus", "classpath": "airflow.providers.git.bundles.git.GitDagBundle", "kwargs": {"repo_url": "https://github.com/elwarrior100/modbus_data_plataform.git", "tracking_ref": "main", "subdir": "pipelines/dags", "refresh_interval": 120}}]'
 
 # Metadata database: the "airflow" database in the existing PostgreSQL (created by install-airflow.sh)
 postgresql:
@@ -48,6 +59,8 @@ workers:
 # lakeFS connection for task pods (the Secret is copied by install-airflow.sh)
 env:
   - {name: LAKEFS_ENDPOINT, value: "http://lakefs.data.svc.cluster.local:8000"}
+  # Image the modbus tasks run in (published by that repository's CI, tag = commit SHA). Bump it to deploy new code.
+  - {name: MODBUS_PIPELINES_IMAGE, value: "ghcr.io/elwarrior100/modbus-pipelines:44008786e1c6878d7de0155979a9c0706199f05a"}
 extraEnvFrom: |
   - secretRef: {name: lakefs-credentials}
 
