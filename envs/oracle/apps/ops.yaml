@@ -1,0 +1,23 @@
+# Operational checks (silver freshness heartbeat). Oracle only: the metric post uses the VM's instance principal.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ops
+  namespace: argocd
+  labels:
+    platform/git-source: "true"     # reads this repository: each environment sets which branch
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  project: platform
+  source:
+    repoURL: https://github.com/elwarrior100/platform.git
+    targetRevision: main
+    path: envs/oracle/ops
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: ops
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

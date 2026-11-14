@@ -1,6 +1,7 @@
 # Nightly copy of the lake objects (SeaweedFS bucket "lake") to Object Storage (platform-lake-backup), so the
-# lakeFS metadata in the pg_dump always has its objects somewhere off the VM disk. "rclone copy" only adds new or
-# changed objects and never deletes (the VM may not delete there either). Runs after pg-backup (02:30).
+# lakeFS metadata in the pg_dump always has its objects somewhere off the VM disk. lakeFS objects never change, so
+# the copy is --immutable: it only adds new objects and fails instead of overwriting (the VM may neither overwrite
+# nor delete there). On success it posts lake_sync_success (OCI alarm when missing). Runs after pg-backup (02:30).
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -30,11 +31,11 @@ spec:
               command: [sh, -ec]
               args:
                 - |
+                  REGION=$(python3 -c 'import json,urllib.request; print(json.load(urllib.request.urlopen(urllib.request.Request("http://169.254.169.254/opc/v2/instance/", headers={"Authorization": "Bearer Oracle"})))["canonicalRegionName"])')
                   NS=$(oci os ns get --query data --raw-output)
                   COMP=$(oci os bucket get -ns "$NS" --bucket-name platform-lake-backup --query 'data."compartment-id"' --raw-output)
-                  printf 'export RCLONE_CONFIG_OCI_NAMESPACE=%s RCLONE_CONFIG_OCI_COMPARTMENT=%s\n' "$NS" "$COMP" > /cfg/oci.env
+                  printf 'export RCLONE_CONFIG_OCI_NAMESPACE=%s RCLONE_CONFIG_OCI_COMPARTMENT=%s RCLONE_CONFIG_OCI_REGION=%s\n' "$NS" "$COMP" "$REGION" > /cfg/oci.env
               volumeMounts: [{name: cfg, mountPath: /cfg}]
-          containers:
             - name: copy
               image: rclone/rclone:1.71.2@sha256:3103526c506266a9ecdf064efe99bf3677d92ef6407af124d8c56b4f49cbaa51
               envFrom: [{secretRef: {name: seaweedfs-s3}}]
@@ -46,12 +47,24 @@ spec:
                 # target: OCI Object Storage with the VM's instance principal (no key)
                 - {name: RCLONE_CONFIG_OCI_TYPE, value: oracleobjectstorage}
                 - {name: RCLONE_CONFIG_OCI_PROVIDER, value: instance_principal_auth}
-                - {name: RCLONE_CONFIG_OCI_REGION, value: eu-madrid-1}
               command: [sh, -ec]
               args:
                 - |
                   . /cfg/oci.env
-                  rclone copy lake:lake oci:platform-lake-backup --transfers 2 --checkers 4 --stats-one-line -v
+                  rclone copy lake:lake oci:platform-lake-backup --immutable --size-only --no-update-modtime --transfers 2 --checkers 4 --stats-one-line -v
                   echo "lake objects in the backup: $(rclone size oci:platform-lake-backup --json)"
               volumeMounts: [{name: cfg, mountPath: /cfg}]
               resources: {requests: {cpu: 50m, memory: 64Mi}, limits: {memory: 256Mi}}
+          containers:
+            - name: heartbeat          # runs only if the copy (an init container) succeeded
+              image: ghcr.io/oracle/oci-cli:latest@sha256:2127c2f50ee1353fa78cbf538ab91ffaccc0d02b6d0b4144530cef6ee69709f5
+              env: [{name: OCI_CLI_AUTH, value: instance_principal}]
+              command: [sh, -ec]
+              args:
+                - |
+                  MD=$(python3 -c 'import json,urllib.request; d=json.load(urllib.request.urlopen(urllib.request.Request("http://169.254.169.254/opc/v2/instance/", headers={"Authorization": "Bearer Oracle"}))); print(d["compartmentId"], d["canonicalRegionName"])')
+                  set -- $MD
+                  oci monitoring metric-data post --endpoint "https://telemetry-ingestion.$2.oraclecloud.com" \
+                    --metric-data "[{\"namespace\":\"platform_backup\",\"compartmentId\":\"$1\",\"name\":\"lake_sync_success\",\"dimensions\":{\"cluster\":\"oracle\"},\"datapoints\":[{\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"value\":1}]}]" >/dev/null
+                  echo "heartbeat posted (lake_sync_success)"
+              resources: {requests: {cpu: 20m, memory: 64Mi}, limits: {memory: 256Mi}}

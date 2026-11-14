@@ -31,7 +31,8 @@ spec:
             - -ec
             - |
               NS=\$(oci os ns get --query data --raw-output)
-              LATEST=\$(oci os object list -ns \$NS -bn platform-backups --all --query 'data[].name' --raw-output | tr -d '[]", ' | grep / | sort | tail -1 | xargs dirname)
+              # newest run that finished: only runs with the _COMPLETE marker (written last by pg-backup) count
+              LATEST=\$(oci os object list -ns \$NS -bn platform-backups --all --query 'data[].name' --raw-output | tr -d '[]", ' | grep '/_COMPLETE\$' | sort | tail -1 | xargs dirname)
               echo "latest backup: \$LATEST"
               oci os object bulk-download -ns \$NS -bn platform-backups --prefix "\$LATEST/" --download-dir /dump >/dev/null
               # the VM must NOT be able to delete a backup (policy allows create/read only)
@@ -40,7 +41,7 @@ spec:
               else
                 echo "delete refused, as intended"
               fi
-              mv /dump/\$LATEST/* /dump/ && ls -l /dump
+              rm -f /dump/\$LATEST/_COMPLETE && mv /dump/\$LATEST/* /dump/ && ls -l /dump
           volumeMounts: [{name: dump, mountPath: /dump}]
       containers:
         - name: restore

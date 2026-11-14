@@ -1,10 +1,11 @@
+# Runs in its own namespace (ops): it only needs the lakeFS key and the metrics post, not the backup credentials.
 # Every 30 min: is the newest silver merge in lakeFS main less than 3 h old? If so, post silver_fresh to OCI
 # Monitoring. The OCI alarm "silver not updated for 3 h" (terraform/oracle/alarms.tf) fires when these stop.
 apiVersion: batch/v1
 kind: CronJob
 metadata:
   name: silver-freshness
-  namespace: backup
+  namespace: ops
 spec:
   schedule: "*/30 * * * *"
   concurrencyPolicy: Forbid
@@ -38,8 +39,9 @@ spec:
                   )
                   echo "newest silver merge: $AGE s ago"
                   if [ "$AGE" -lt 10800 ]; then
-                    COMP=$(python3 -c 'import json,urllib.request; print(json.load(urllib.request.urlopen(urllib.request.Request("http://169.254.169.254/opc/v2/instance/", headers={"Authorization": "Bearer Oracle"})))["compartmentId"])')
-                    oci monitoring metric-data post --endpoint https://telemetry-ingestion.eu-madrid-1.oraclecloud.com \
+                    MD=$(python3 -c 'import json,urllib.request; d=json.load(urllib.request.urlopen(urllib.request.Request("http://169.254.169.254/opc/v2/instance/", headers={"Authorization": "Bearer Oracle"}))); print(d["compartmentId"], d["canonicalRegionName"])')
+                    COMP=${MD% *}; REGION=${MD#* }
+                    oci monitoring metric-data post --endpoint "https://telemetry-ingestion.$REGION.oraclecloud.com" \
                       --metric-data "[{\"namespace\":\"platform_pipeline\",\"compartmentId\":\"$COMP\",\"name\":\"silver_fresh\",\"dimensions\":{\"cluster\":\"oracle\"},\"datapoints\":[{\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"value\":1}]}]" >/dev/null
                     echo "heartbeat posted (silver_fresh)"
                   else

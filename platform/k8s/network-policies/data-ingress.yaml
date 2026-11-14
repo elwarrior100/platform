@@ -1,0 +1,34 @@
+# Who may connect to the data services. Postgres and lakeFS only accept the namespaces that use them (kubectl
+# port-forward and exec are not affected: they do not go through the pod network). SeaweedFS has its own policy in
+# platform/k8s/seaweedfs/networkpolicy.yaml.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: postgres-clients
+  namespace: data
+spec:
+  podSelector: {matchLabels: {app: postgres}}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: {matchLabels: {app: lakefs}}                                   # lakeFS metadata
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: ingest}}     # the spool
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: airflow}}    # Airflow metadata
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: openmetadata}}
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: backup}}     # nightly pg_dump
+      ports: [{port: 5432, protocol: TCP}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: lakefs-clients
+  namespace: data
+spec:
+  podSelector: {matchLabels: {app: lakefs}}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: ingest}}     # the writer (bronze)
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: airflow}}    # silver tasks
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: ops}}        # freshness check
+      ports: [{port: 8000, protocol: TCP}]

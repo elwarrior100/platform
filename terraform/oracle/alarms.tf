@@ -101,3 +101,33 @@ resource "oci_monitoring_alarm" "silver_stale" {
   body                         = "No silver hour merged into lakeFS main for 3 hours. Check Airflow (silver_hourly runs) and the writer."
   repeat_notification_duration = "PT6H"
 }
+
+# The nightly lake copy posts lake_sync_success when it finishes (envs/oracle/backup/lake-sync.yaml).
+resource "oci_monitoring_alarm" "lake_sync_missing" {
+  compartment_id               = var.compartment_id
+  metric_compartment_id        = var.compartment_id
+  display_name                 = "platform: no successful lake copy in 26 h"
+  namespace                    = "platform_backup"
+  query                        = "lake_sync_success[1h].absent(26h)"
+  severity                     = "CRITICAL"
+  pending_duration             = "PT5M"
+  is_enabled                   = true
+  destinations                 = [oci_ons_notification_topic.alerts.id]
+  body                         = "The nightly copy of the lake objects has not succeeded for 26 hours. Check: kubectl -n backup get jobs; logs of the latest lake-sync job."
+  repeat_notification_duration = "PT12H"
+}
+
+# Always Free gives 20 GB of Object Storage in total; warn well before the dumps and the lake copy reach it.
+resource "oci_monitoring_alarm" "storage_high" {
+  for_each              = { lake = { bucket = oci_objectstorage_bucket.lake.name, gb = 12 }, dumps = { bucket = oci_objectstorage_bucket.backups.name, gb = 5 } }
+  compartment_id        = var.compartment_id
+  metric_compartment_id = oci_identity_compartment.backups.id
+  display_name          = "platform: bucket ${each.value.bucket} above ${each.value.gb} GB"
+  namespace             = "oci_objectstorage"
+  query                 = "StoredBytes[1h]{resourceDisplayName = \"${each.value.bucket}\"}.max() > ${each.value.gb * 1000000000}"
+  severity              = "WARNING"
+  pending_duration      = "PT1H"
+  is_enabled            = true
+  destinations          = [oci_ons_notification_topic.alerts.id]
+  body                  = "Object Storage bucket ${each.value.bucket} is above ${each.value.gb} GB. Always Free includes 20 GB in total."
+}

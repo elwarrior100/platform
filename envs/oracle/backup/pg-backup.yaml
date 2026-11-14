@@ -61,11 +61,14 @@ spec:
                   NS=$(oci os ns get --query data --raw-output)
                   PREFIX=$(date -u +%Y-%m-%d/%H%M%S)      # one prefix per run: a retry never overwrites (the VM may not)
                   oci os object bulk-upload -ns "$NS" -bn platform-backups --src-dir /dump --object-prefix "$PREFIX/"
-                  echo "uploaded to platform-backups/$PREFIX/"
+                  # written LAST: a run without it is incomplete, and the restore test ignores it
+                  date -u +%FT%TZ > /tmp/_COMPLETE && oci os object put -ns "$NS" -bn platform-backups --file /tmp/_COMPLETE --name "$PREFIX/_COMPLETE" >/dev/null
+                  echo "uploaded to platform-backups/$PREFIX/ (complete)"
                   # heartbeat for the OCI alarm "no successful backup in 26 h" (terraform/oracle/alarms.tf)
-                  COMP=$(python3 -c 'import json,urllib.request; print(json.load(urllib.request.urlopen(urllib.request.Request("http://169.254.169.254/opc/v2/instance/", headers={"Authorization": "Bearer Oracle"})))["compartmentId"])')
+                  MD=$(python3 -c 'import json,urllib.request; d=json.load(urllib.request.urlopen(urllib.request.Request("http://169.254.169.254/opc/v2/instance/", headers={"Authorization": "Bearer Oracle"}))); print(d["compartmentId"], d["canonicalRegionName"])')
+                  COMP=${MD% *}; REGION=${MD#* }
                   NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-                  oci monitoring metric-data post --endpoint https://telemetry-ingestion.eu-madrid-1.oraclecloud.com \
+                  oci monitoring metric-data post --endpoint "https://telemetry-ingestion.$REGION.oraclecloud.com" \
                     --metric-data "[{\"namespace\":\"platform_backup\",\"compartmentId\":\"$COMP\",\"name\":\"backup_success\",\"dimensions\":{\"cluster\":\"oracle\"},\"datapoints\":[{\"timestamp\":\"$NOW\",\"value\":1}]}]" >/dev/null
                   echo "heartbeat posted (backup_success)"
               volumeMounts: [{name: dump, mountPath: /dump}]

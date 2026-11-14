@@ -1,6 +1,14 @@
 # Backups (Always Free): Object Storage for database dumps and the Terraform state, and a weekly backup of the
 # VM's boot volume. Everything here is free: 20 GB of Object Storage and 5 volume backups per tenancy.
 
+data "oci_identity_region_subscriptions" "this" {
+  tenancy_id = var.compartment_id
+}
+
+locals {
+  home_region = [for r in data.oci_identity_region_subscriptions.this.region_subscriptions : r.region_name if r.is_home_region][0]
+}
+
 resource "oci_identity_compartment" "backups" {
   compartment_id = var.compartment_id
   name           = "platform-backups"
@@ -46,8 +54,8 @@ resource "oci_objectstorage_bucket" "tfstate" {
 }
 
 # Copy of the lake objects (SeaweedFS bucket "lake": bronze, silver, lakeFS metadata ranges), synced nightly so a
-# restore of the lakeFS database never points at objects that only lived on the VM disk. Not versioned: lakeFS
-# objects are immutable, and the copy job never deletes.
+# restore of the lakeFS database never points at objects that only lived on the VM disk. lakeFS objects never change,
+# so the VM may create and read here but neither overwrite nor delete: a compromised VM cannot tamper with the copy.
 resource "oci_objectstorage_bucket" "lake" {
   compartment_id = oci_identity_compartment.backups.id
   namespace      = data.oci_objectstorage_namespace.this.namespace
@@ -63,8 +71,8 @@ resource "oci_identity_policy" "backups" {
   statements = [
     "Allow dynamic-group ${oci_identity_dynamic_group.platform_instances.name} to read buckets in compartment ${oci_identity_compartment.backups.name}",
     "Allow dynamic-group ${oci_identity_dynamic_group.platform_instances.name} to manage objects in compartment ${oci_identity_compartment.backups.name} where all {target.bucket.name = '${oci_objectstorage_bucket.backups.name}', any {request.permission = 'OBJECT_CREATE', request.permission = 'OBJECT_INSPECT', request.permission = 'OBJECT_READ'}}",
-    "Allow dynamic-group ${oci_identity_dynamic_group.platform_instances.name} to manage objects in compartment ${oci_identity_compartment.backups.name} where all {target.bucket.name = '${oci_objectstorage_bucket.lake.name}', any {request.permission = 'OBJECT_CREATE', request.permission = 'OBJECT_INSPECT', request.permission = 'OBJECT_READ', request.permission = 'OBJECT_OVERWRITE'}}",
-    "Allow service objectstorage-eu-madrid-1 to manage object-family in compartment ${oci_identity_compartment.backups.name}",
+    "Allow dynamic-group ${oci_identity_dynamic_group.platform_instances.name} to manage objects in compartment ${oci_identity_compartment.backups.name} where all {target.bucket.name = '${oci_objectstorage_bucket.lake.name}', any {request.permission = 'OBJECT_CREATE', request.permission = 'OBJECT_INSPECT', request.permission = 'OBJECT_READ'}}",
+    "Allow service objectstorage-${local.home_region} to manage object-family in compartment ${oci_identity_compartment.backups.name}",
   ]
 }
 
