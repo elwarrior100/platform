@@ -1,0 +1,159 @@
+# Daily lake restore drill: proves that the backups ALONE rebuild the lake, without touching anything live.
+# Every day 04:15 UTC (after pg-backup 02:30 and lake-sync 03:00; daily because an OCI absence alarm can wait 3 days
+# at most). One pod, everything on localhost:
+#   fetch            newest complete dump set (_COMPLETE) from platform-backups: globals.sql + lakefs.dump
+#   postgres         scratch Postgres (sidecar)               <- globals + lakefs.dump restored into it
+#   seaweedfs        scratch SeaweedFS (sidecar, bucket lake)  <- every object of platform-lake-backup copied into it
+#   lakefs           scratch lakeFS on those two (sidecar), same encryption key and admin key as the real one
+#   check            per repository: main's commit, then EVERY object on main downloaded and its MD5 compared with
+#                    the checksum lakeFS recorded at write time
+#   heartbeat        only if the check passed: lake_drill_success to OCI Monitoring (alarm when missing for 2 days)
+# The live Postgres, SeaweedFS and lakeFS are never contacted (ops egress: DNS, metadata, OCI services, lakeFS API;
+# the drill does not use the last one). Run it now: ./scripts/lake-restore-test.sh
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: lake-restore-drill
+  namespace: ops
+spec:
+  schedule: "15 4 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 1200
+      ttlSecondsAfterFinished: 86400
+      template:
+        metadata:
+          labels: {app: lake-restore-drill}
+        spec:
+          restartPolicy: Never
+          volumes: [{name: work, emptyDir: {}}, {name: pg, emptyDir: {}}, {name: sw, emptyDir: {}}]
+          initContainers:
+            - name: fetch
+              image: ghcr.io/oracle/oci-cli:latest@sha256:2127c2f50ee1353fa78cbf538ab91ffaccc0d02b6d0b4144530cef6ee69709f5
+              env: [{name: OCI_CLI_AUTH, value: instance_principal}]
+              command: [sh, -ec]
+              args:
+                - |
+                  sleep 10   # kube-router adds a new pod to the egress allow-lists with a few seconds of delay
+                  NS=$(oci os ns get --query data --raw-output)
+                  LATEST=$(oci os object list -ns $NS -bn platform-backups --all --query 'data[].name' --raw-output | tr -d '[]", ' | grep '/_COMPLETE$' | sort | tail -1 | xargs dirname)
+                  echo "dump set: $LATEST"
+                  for f in globals.sql lakefs.dump; do oci os object get -ns $NS -bn platform-backups --name "$LATEST/$f" --file /work/$f >/dev/null; done
+                  echo "$LATEST" > /work/SET
+                  REGION=$(python3 -c 'import json,urllib.request; print(json.load(urllib.request.urlopen(urllib.request.Request("http://169.254.169.254/opc/v2/instance/", headers={"Authorization": "Bearer Oracle"})))["canonicalRegionName"])')
+                  printf 'export RCLONE_CONFIG_OCI_NAMESPACE=%s RCLONE_CONFIG_OCI_REGION=%s\n' "$NS" "$REGION" > /work/oci.env
+              volumeMounts: [{name: work, mountPath: /work}]
+            - name: postgres                 # sidecar: runs until the pod ends
+              image: timescale/timescaledb:latest-pg17@sha256:6a6b7d7a346d7c6be03a310c240706f3bbc6d7adbdf3fbc07823570b34337f5e
+              restartPolicy: Always
+              env: [{name: POSTGRES_HOST_AUTH_METHOD, value: trust}, {name: PGDATA, value: /pg/data}]
+              startupProbe: {exec: {command: [pg_isready, -h, 127.0.0.1, -U, postgres]}, periodSeconds: 2, failureThreshold: 60}
+              volumeMounts: [{name: pg, mountPath: /pg}]
+              resources: {requests: {cpu: 50m, memory: 128Mi}, limits: {memory: 512Mi}}
+            - name: seaweedfs                # sidecar; no s3 config = no authentication (the ops policy lets nothing in)
+              image: chrislusf/seaweedfs:latest@sha256:ccad23e18639c8b98cee17e7100b95830a06077b56d8e5b006d6dcf8ec5e94a0
+              restartPolicy: Always
+              args: [server, -dir=/data, -ip=127.0.0.1, -ip.bind=0.0.0.0, -master.volumeSizeLimitMB=64, -volume.max=20, -s3, -s3.port=8333]
+              startupProbe: {tcpSocket: {port: 8333}, periodSeconds: 2, failureThreshold: 60}
+              volumeMounts: [{name: sw, mountPath: /data}]
+              resources: {requests: {cpu: 50m, memory: 128Mi}, limits: {memory: 512Mi}}
+            - name: restore-db
+              image: timescale/timescaledb:latest-pg17@sha256:6a6b7d7a346d7c6be03a310c240706f3bbc6d7adbdf3fbc07823570b34337f5e
+              command: [sh, -ec]
+              args:
+                - |
+                  # roles first; the postgres role already exists in the scratch server, so its CREATE is skipped
+                  sed '/^CREATE ROLE postgres;$/d' /work/globals.sql | psql -q -v ON_ERROR_STOP=1 -h 127.0.0.1 -U postgres >/dev/null
+                  createdb -h 127.0.0.1 -U postgres -O lakefs lakefs
+                  pg_restore -h 127.0.0.1 -U postgres -d lakefs --exit-on-error /work/lakefs.dump
+                  echo "lakefs database restored: $(psql -h 127.0.0.1 -U postgres -d lakefs -tAc 'select count(*) from kv') kv rows"
+              volumeMounts: [{name: work, mountPath: /work}]
+            - name: restore-objects
+              image: rclone/rclone:1.71.2@sha256:3103526c506266a9ecdf064efe99bf3677d92ef6407af124d8c56b4f49cbaa51
+              env:
+                - {name: RCLONE_CONFIG_OCI_TYPE, value: oracleobjectstorage}
+                - {name: RCLONE_CONFIG_OCI_PROVIDER, value: instance_principal_auth}
+                - {name: RCLONE_CONFIG_LAKE_TYPE, value: s3}
+                - {name: RCLONE_CONFIG_LAKE_PROVIDER, value: SeaweedFS}
+                - {name: RCLONE_CONFIG_LAKE_ENDPOINT, value: "http://127.0.0.1:8333"}
+              command: [sh, -ec]
+              args:
+                - |
+                  . /work/oci.env
+                  rclone mkdir lake:lake
+                  rclone copy oci:platform-lake-backup lake:lake --transfers 4 --checkers 8 -q
+                  echo "objects restored into the scratch SeaweedFS: $(rclone size lake:lake --json)"
+              volumeMounts: [{name: work, mountPath: /work}]
+              resources: {requests: {cpu: 50m, memory: 64Mi}, limits: {memory: 256Mi}}
+            - name: lakefs                   # sidecar, started only after both restores
+              image: treeverse/lakefs:1.86.0@sha256:fb7a0d90f77e3f893e8b8c6f3be131c090f6f0160c2d6c7784c4378cf7e66ea1
+              restartPolicy: Always
+              args: [run]
+              env:
+                - {name: LAKEFS_DATABASE_TYPE, value: postgres}
+                - {name: LAKEFS_DATABASE_POSTGRES_CONNECTION_STRING, value: "postgres://lakefs@127.0.0.1:5432/lakefs?sslmode=disable"}
+                - {name: LAKEFS_AUTH_ENCRYPT_SECRET_KEY, valueFrom: {secretKeyRef: {name: lakefs-auth, key: LAKEFS_AUTH_ENCRYPT_SECRET_KEY}}}
+                - {name: LAKEFS_BLOCKSTORE_TYPE, value: s3}
+                - {name: LAKEFS_BLOCKSTORE_S3_ENDPOINT, value: "http://127.0.0.1:8333"}
+                - {name: LAKEFS_BLOCKSTORE_S3_FORCE_PATH_STYLE, value: "true"}
+                - {name: LAKEFS_BLOCKSTORE_S3_DISCOVER_BUCKET_REGION, value: "false"}
+                - {name: LAKEFS_BLOCKSTORE_S3_REGION, value: us-east-1}
+                - {name: LAKEFS_BLOCKSTORE_S3_CREDENTIALS_ACCESS_KEY_ID, value: drill}
+                - {name: LAKEFS_BLOCKSTORE_S3_CREDENTIALS_SECRET_ACCESS_KEY, value: drill}
+                - {name: LAKEFS_BLOCKSTORE_S3_DISABLE_PRE_SIGNED, value: "true"}
+                - {name: LAKEFS_EMAIL_SUBSCRIPTION_ENABLED, value: "false"}
+                - {name: LAKEFS_STATS_ENABLED, value: "false"}
+              startupProbe: {httpGet: {path: /_health, port: 8000}, periodSeconds: 2, failureThreshold: 90}
+              resources: {requests: {cpu: 50m, memory: 128Mi}, limits: {memory: 1Gi}}
+            - name: check
+              image: treeverse/lakefs:1.86.0@sha256:fb7a0d90f77e3f893e8b8c6f3be131c090f6f0160c2d6c7784c4378cf7e66ea1
+              env:
+                - {name: LAKECTL_SERVER_ENDPOINT_URL, value: "http://127.0.0.1:8000"}
+                - {name: LAKECTL_CREDENTIALS_ACCESS_KEY_ID, valueFrom: {secretKeyRef: {name: lakefs-auth, key: LAKEFS_ACCESS_KEY_ID}}}
+                - {name: LAKECTL_CREDENTIALS_SECRET_ACCESS_KEY, valueFrom: {secretKeyRef: {name: lakefs-auth, key: LAKEFS_SECRET_ACCESS_KEY}}}
+              command: [sh, -ec]
+              args:
+                - |
+                  echo "dump set: $(cat /work/SET)"
+                  REPOS=$(lakectl repo list --amount 1000 | awk -F'\t' 'NF>1 {print $1}')   # tab-separated when not a terminal
+                  [ -n "$REPOS" ] || { echo "FAIL: no repository in the restored lakeFS" >&2; exit 1; }
+                  fail=0
+                  for r in $REPOS; do
+                    LOG=$(lakectl log --amount 1 --no-color lakefs://$r/main)
+                    COMMIT=$(echo "$LOG" | awk '/^ID:/ {print $2; exit}')
+                    WHEN=$(echo "$LOG" | awk '/^Date:/ {sub(/^Date: */, ""); print; exit}')
+                    lakectl fs ls -r lakefs://$r/main/ | awk '/^object/ {print $NF}' > /tmp/paths
+                    LISTED=$(wc -l < /tmp/paths | tr -d ' ')
+                    mkdir -p /tmp/out/$r
+                    lakectl fs download -r --pre-sign=false --parallelism 4 lakefs://$r/main/ /tmp/out/$r/ >/dev/null 2>/tmp/err || tail -3 /tmp/err
+                    # every object: downloaded, and its MD5 equal to the checksum lakeFS recorded (multipart ETags skipped)
+                    ok=0; bad=0; skipped=0
+                    while read -r p; do
+                      want=$(lakectl fs stat "lakefs://$r/main/$p" | awk '/^Checksum:/ {print $2}')
+                      case "$want" in *-*) skipped=$((skipped + 1)); continue ;; esac
+                      got=$(md5sum "/tmp/out/$r/$p" 2>/dev/null | cut -d' ' -f1)
+                      if [ -n "$got" ] && [ "$got" = "$want" ]; then ok=$((ok + 1)); else bad=$((bad + 1)); echo "  mismatch or missing: $p"; fi
+                    done < /tmp/paths
+                    if [ "$LISTED" -gt 0 ] && [ "$bad" -eq 0 ]; then status=OK; else status=FAIL; fail=1; fi
+                    echo "$r: main $COMMIT ($WHEN), $LISTED objects, $ok checksums equal, $bad wrong or missing, $skipped multipart: $status"
+                  done
+                  [ $fail -eq 0 ] && echo "LAKE RESTORE TEST OK" || { echo "LAKE RESTORE TEST FAILED"; exit 1; }
+              volumeMounts: [{name: work, mountPath: /work}]
+              resources: {requests: {cpu: 50m, memory: 64Mi}, limits: {memory: 256Mi}}
+          containers:
+            - name: heartbeat                # runs only if every init container (the check included) succeeded
+              image: ghcr.io/oracle/oci-cli:latest@sha256:2127c2f50ee1353fa78cbf538ab91ffaccc0d02b6d0b4144530cef6ee69709f5
+              env: [{name: OCI_CLI_AUTH, value: instance_principal}]
+              command: [sh, -ec]
+              args:
+                - |
+                  MD=$(python3 -c 'import json,urllib.request; d=json.load(urllib.request.urlopen(urllib.request.Request("http://169.254.169.254/opc/v2/instance/", headers={"Authorization": "Bearer Oracle"}))); print(d["compartmentId"], d["canonicalRegionName"])')
+                  COMP=${MD% *}; REGION=${MD#* }
+                  oci monitoring metric-data post --endpoint "https://telemetry-ingestion.$REGION.oraclecloud.com" \
+                    --metric-data "[{\"namespace\":\"platform_backup\",\"compartmentId\":\"$COMP\",\"name\":\"lake_drill_success\",\"dimensions\":{\"cluster\":\"oracle\"},\"datapoints\":[{\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"value\":1}]}]" >/dev/null
+                  echo "heartbeat posted (lake_drill_success)"
+              resources: {requests: {cpu: 20m, memory: 64Mi}, limits: {memory: 256Mi}}

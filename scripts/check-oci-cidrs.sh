@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Compares the OCI service ranges allowed in the backup and ops egress policies with the list Oracle publishes
-# (tag OSN, region eu-madrid-1). Exits 1 with the difference if they no longer match, so the policies can be updated
+# (tags OSN or OBJECT_STORAGE, region eu-madrid-1). Exits 1 with the difference if they no longer match, so the policies can be updated
 # before the nightly jobs start failing. Runs weekly in CI (validate.yml) and by hand.
 # Usage: ./scripts/check-oci-cidrs.sh [region]
 set -euo pipefail
@@ -13,7 +13,7 @@ import json, sys
 d = json.load(open(sys.argv[1]))
 for r in d["regions"]:
     if r["region"] == sys.argv[2]:
-        for c in (c["cidr"] for c in r["cidrs"] if "OSN" in c["tags"]):
+        for c in (c["cidr"] for c in r["cidrs"] if {"OSN", "OBJECT_STORAGE"} & set(c["tags"])):
             print(c)
 PY
 [ -s "$TMP/want" ] || { echo "no OSN ranges found for $REGION" >&2; exit 1; }

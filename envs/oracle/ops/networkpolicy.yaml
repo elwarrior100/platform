@@ -1,4 +1,4 @@
-# ops: default-deny egress. It reads lakeFS and posts a metric, nothing else.
+# ops: default-deny egress. It reads lakeFS, reads the backups (restore drill) and posts metrics, nothing else.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -31,3 +31,13 @@ spec:
     - to:   # lakeFS API
         - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: data}}
       ports: [{port: 8000, protocol: TCP}]
+---
+# ops: nothing connects in (the restore drill's scratch services listen on the pod, for its own containers only)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: deny-ingress
+  namespace: ops
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]

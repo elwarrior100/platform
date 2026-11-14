@@ -118,6 +118,21 @@ resource "oci_monitoring_alarm" "lake_sync_missing" {
 }
 
 # Always Free gives 20 GB of Object Storage in total; warn well before the dumps and the lake copy reach it.
+# The daily lake restore drill posts lake_drill_success when every object checks out (envs/oracle/ops/lake-restore-drill.yaml).
+resource "oci_monitoring_alarm" "lake_drill_missing" {
+  compartment_id               = var.compartment_id
+  metric_compartment_id        = var.compartment_id
+  display_name                 = "platform: lake restore drill not passed in 2 days"
+  namespace                    = "platform_backup"
+  query                        = "lake_drill_success[1h].absent(2d)"
+  severity                     = "WARNING"
+  pending_duration             = "PT5M"
+  is_enabled                   = true
+  destinations                 = [oci_ons_notification_topic.alerts.id]
+  body                         = "The daily lake restore drill (ops/lake-restore-drill, 04:15 UTC) has not passed for 2 days. Run ./scripts/lake-restore-test.sh and read its output."
+  repeat_notification_duration = "PT24H"
+}
+
 resource "oci_monitoring_alarm" "storage_high" {
   for_each              = { lake = { bucket = oci_objectstorage_bucket.lake.name, gb = 12 }, dumps = { bucket = oci_objectstorage_bucket.backups.name, gb = 5 } }
   compartment_id        = var.compartment_id
