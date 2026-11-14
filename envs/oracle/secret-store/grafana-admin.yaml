@@ -1,0 +1,13 @@
+# Grafana admin login for this environment, from the vault (scripts/vault-new-password.sh monitoring-grafana-admin-oracle).
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: grafana-admin
+  namespace: monitoring
+spec:
+  refreshInterval: 1h
+  secretStoreRef: {kind: ClusterSecretStore, name: oci-vault}
+  target: {name: grafana-admin, creationPolicy: Orphan, deletionPolicy: Retain}
+  data:
+    - {secretKey: admin-user, remoteRef: {key: monitoring-grafana-admin-oracle, property: username}}
+    - {secretKey: admin-password, remoteRef: {key: monitoring-grafana-admin-oracle, property: password}}

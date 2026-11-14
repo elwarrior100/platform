@@ -1,0 +1,54 @@
+# kube-prometheus-stack 93.3.0, sized for the 12 GB Oracle node: Prometheus + Grafana + the standard Kubernetes
+# dashboards and alert rules. Alerts show in Grafana and Prometheus; the alarms that must fire even when the whole VM
+# is down are OCI Monitoring alarms outside the VM (terraform/oracle/alarms.tf).
+crds:
+  enabled: true
+alertmanager:
+  enabled: false                 # no mail account yet: external alerting is done by OCI alarms
+grafana:
+  admin:
+    existingSecret: grafana-admin          # from the vault (monitoring-grafana-admin-<env>)
+    userKey: admin-user
+    passwordKey: admin-password
+  defaultDashboardsTimezone: utc
+  persistence:
+    enabled: false               # dashboards are provisioned from git; nothing to keep
+  resources:
+    requests: {cpu: 20m, memory: 128Mi}
+    limits: {memory: 256Mi}
+prometheus:
+  prometheusSpec:
+    scrapeInterval: 60s
+    retention: 3d
+    retentionSize: 2GB
+    resources:
+      requests: {cpu: 100m, memory: 400Mi}
+      limits: {memory: 1Gi}
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: local-path
+          accessModes: [ReadWriteOnce]
+          resources: {requests: {storage: 4Gi}}
+prometheusOperator:
+  resources:
+    requests: {cpu: 20m, memory: 64Mi}
+    limits: {memory: 192Mi}
+kube-state-metrics:
+  resources:
+    requests: {cpu: 10m, memory: 48Mi}
+    limits: {memory: 128Mi}
+prometheus-node-exporter:
+  hostNetwork: false             # the admission policy forbids hostNetwork; host metrics still come from /proc and /sys
+  resources:
+    requests: {cpu: 10m, memory: 24Mi}
+    limits: {memory: 64Mi}
+# k3s runs these inside one process and does not expose them to Prometheus: scraping them would only raise false alerts
+kubeEtcd:
+  enabled: false
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeProxy:
+  enabled: false

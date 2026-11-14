@@ -15,6 +15,7 @@ UIS=(
   "Simulator (control)|ot|svc/ot-edge|8083|8080|/health"
   "Airflow|airflow|svc/airflow-api-server|8084|8080|/"
   "OpenMetadata|openmetadata|svc/openmetadata|8585|8585|/"
+  "Grafana|monitoring|svc/monitoring-grafana|3000|80|/api/health"
   "OPC UA (use UaExpert)|ot|svc/ot-edge|4840|4840|-"
 )
 
@@ -68,6 +69,9 @@ PASSWORDS (copied to the clipboard; paste with Cmd+V):
     ./scripts/vault-get.sh platform-argocd-admin-local password | pbcopy      (kept in the OCI Vault)
   Airflow   (user: admin)
     KUBECONFIG=$HOME/.lima/industrial/copied-from-guest/kubeconfig.yaml kubectl -n airflow get secret airflow-admin -o jsonpath='{.data.password}' | base64 -d | pbcopy
+  Grafana   (user: admin)
+    ./scripts/vault-new-password.sh is how it was created; read it with:
+    ./scripts/vault-get.sh monitoring-grafana-admin-local password | pbcopy
   OpenMetadata (user: admin@open-metadata.org)
     ./scripts/vault-get.sh openmetadata-admin-local password | pbcopy        (kept in the OCI Vault)
   lakeFS    (user = access key; password = secret key)

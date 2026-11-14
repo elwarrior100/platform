@@ -114,3 +114,19 @@ spec:
         - ipBlock:
             cidr: 0.0.0.0/0
             except: [169.254.169.254/32]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: deny-cloud-metadata
+  namespace: monitoring
+spec:
+  podSelector: {}                                   # every pod in this namespace, no exceptions
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector: {}          # any pod in the cluster (DNS, Postgres, lakeFS...)
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [169.254.169.254/32]

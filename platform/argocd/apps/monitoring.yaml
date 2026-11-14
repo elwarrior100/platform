@@ -1,0 +1,36 @@
+# Prometheus + Grafana (kube-prometheus-stack) under Argo CD, values from this repository.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: monitoring
+  namespace: argocd
+  labels:
+    platform/values-source-1: "true"   # source 1 reads this repository: each environment sets which branch
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  project: default
+  sources:
+    - repoURL: https://prometheus-community.github.io/helm-charts
+      chart: kube-prometheus-stack
+      targetRevision: 93.3.0
+      helm:
+        releaseName: monitoring
+        valueFiles: [$values/platform/monitoring/values.yaml]
+    - repoURL: https://github.com/elwarrior100/platform.git
+      targetRevision: main
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true          # the CRDs are too large for client-side apply
+      - RespectIgnoreDifferences=true
+  ignoreDifferences:
+    - group: apps
+      kind: StatefulSet
+      jsonPointers: [/spec/volumeClaimTemplates]
