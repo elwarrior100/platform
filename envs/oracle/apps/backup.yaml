@@ -1,0 +1,21 @@
+# Nightly database backup to OCI Object Storage. Oracle only: it authenticates with the VM's instance principal.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: backup
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/elwarrior100/platform.git
+    targetRevision: main
+    path: envs/oracle/backup
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: data
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

@@ -1,0 +1,9 @@
+# Data services (Postgres, SeaweedFS) get the highest priority among workloads: under memory pressure on the
+# 12 GB Oracle node, the kubelet evicts lower-priority pods (task pods, OpenSearch) first.
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: platform-data
+value: 1000000
+globalDefault: false
+description: Stateful data services of the platform (Postgres, SeaweedFS)

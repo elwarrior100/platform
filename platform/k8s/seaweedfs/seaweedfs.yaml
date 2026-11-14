@@ -6,13 +6,12 @@ metadata:
 spec:
   selector:
     app: seaweedfs
+  # Only the S3 gateway (used by lakeFS, which has authentication). The filer (8888) has no authentication, so it
+  # is not published on the Service: reach it with kubectl port-forward pod/seaweedfs-0 8888 when needed.
   ports:
     - name: s3
       port: 8333
       targetPort: 8333
-    - name: filer
-      port: 8888
-      targetPort: 8888
 ---
 apiVersion: apps/v1
 kind: StatefulSet
@@ -30,9 +29,11 @@ spec:
       labels:
         app: seaweedfs
     spec:
+      priorityClassName: platform-data
+      terminationGracePeriodSeconds: 60
       containers:
         - name: seaweedfs
-          image: chrislusf/seaweedfs:latest
+          image: chrislusf/seaweedfs:latest@sha256:ccad23e18639c8b98cee17e7100b95830a06077b56d8e5b006d6dcf8ec5e94a0   # pinned by digest
           imagePullPolicy: IfNotPresent
           args:
             - server

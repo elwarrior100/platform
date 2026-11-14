@@ -1,0 +1,130 @@
+# Block the cloud metadata endpoint (169.254.169.254) for every pod, except pods labelled
+# platform/metadata-access: "true". On Oracle that endpoint hands out instance-principal credentials that can read the
+# whole vault, so only the External Secrets Operator (its own namespace, not listed here) and the backup job may reach
+# it. Everything else is still allowed: these policies only remove that one address.
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: deny-cloud-metadata
+  namespace: data
+spec:
+  podSelector:
+    matchExpressions:
+      - {key: platform/metadata-access, operator: DoesNotExist}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector: {}          # any pod in the cluster (DNS, Postgres, lakeFS...)
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [169.254.169.254/32]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: deny-cloud-metadata
+  namespace: ingest
+spec:
+  podSelector:
+    matchExpressions:
+      - {key: platform/metadata-access, operator: DoesNotExist}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector: {}          # any pod in the cluster (DNS, Postgres, lakeFS...)
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [169.254.169.254/32]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: deny-cloud-metadata
+  namespace: ot
+spec:
+  podSelector:
+    matchExpressions:
+      - {key: platform/metadata-access, operator: DoesNotExist}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector: {}          # any pod in the cluster (DNS, Postgres, lakeFS...)
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [169.254.169.254/32]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: deny-cloud-metadata
+  namespace: airflow
+spec:
+  podSelector:
+    matchExpressions:
+      - {key: platform/metadata-access, operator: DoesNotExist}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector: {}          # any pod in the cluster (DNS, Postgres, lakeFS...)
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [169.254.169.254/32]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: deny-cloud-metadata
+  namespace: openmetadata
+spec:
+  podSelector:
+    matchExpressions:
+      - {key: platform/metadata-access, operator: DoesNotExist}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector: {}          # any pod in the cluster (DNS, Postgres, lakeFS...)
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [169.254.169.254/32]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: deny-cloud-metadata
+  namespace: argocd
+spec:
+  podSelector:
+    matchExpressions:
+      - {key: platform/metadata-access, operator: DoesNotExist}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector: {}          # any pod in the cluster (DNS, Postgres, lakeFS...)
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [169.254.169.254/32]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: deny-cloud-metadata
+  namespace: default
+spec:
+  podSelector:
+    matchExpressions:
+      - {key: platform/metadata-access, operator: DoesNotExist}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector: {}          # any pod in the cluster (DNS, Postgres, lakeFS...)
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [169.254.169.254/32]

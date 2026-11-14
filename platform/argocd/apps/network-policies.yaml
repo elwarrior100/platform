@@ -1,0 +1,21 @@
+# Network policies shared by every cluster (k3s enforces NetworkPolicy out of the box).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: network-policies
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/elwarrior100/platform.git
+    targetRevision: main
+    path: platform/k8s/network-policies
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: default
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

@@ -11,7 +11,7 @@ MODE="${1:-}"
 UIS=(
   "Argo CD|argocd|svc/argocd-server|8081|80|/"
   "lakeFS|data|svc/lakefs|8082|8000|/"
-  "SeaweedFS (files)|data|svc/seaweedfs|8888|8888|/"
+  "SeaweedFS (files)|data|pod/seaweedfs-0|8888|8888|/"
   "Simulator (control)|ot|svc/ot-edge|8083|8080|/health"
   "Airflow|airflow|svc/airflow-api-server|8084|8080|/"
   "OpenMetadata|openmetadata|svc/openmetadata|8585|8585|/"

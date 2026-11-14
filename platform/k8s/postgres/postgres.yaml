@@ -41,9 +41,12 @@ spec:
       labels:
         app: postgres
     spec:
+      priorityClassName: platform-data        # evicted / OOM-killed last (holds the spool and the lakeFS metadata)
+      terminationGracePeriodSeconds: 60       # time to checkpoint on shutdown
       containers:
         - name: postgres
-          image: timescale/timescaledb:latest-pg17
+          # pinned by digest: "latest-pg17" alone let the two clusters run different builds (TimescaleDB 2.31 vs 2.32)
+          image: timescale/timescaledb:latest-pg17@sha256:6a6b7d7a346d7c6be03a310c240706f3bbc6d7adbdf3fbc07823570b34337f5e
           ports:
             - containerPort: 5432
           env:
