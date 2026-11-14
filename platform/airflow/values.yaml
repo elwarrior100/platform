@@ -20,13 +20,14 @@ config:
     # DAG and task code move together, in one platform commit, so they can never drift apart.
     dag_bundle_config_list: '[{"name": "modbus", "classpath": "airflow.providers.git.bundles.git.GitDagBundle", "kwargs": {"repo_url": "https://github.com/elwarrior100/modbus_data_plataform.git", "tracking_ref": "44008786e1c6878d7de0155979a9c0706199f05a", "subdir": "pipelines/dags", "refresh_interval": 120}}]'
 
-# Metadata database: the "airflow" database in the existing PostgreSQL (created by install-airflow.sh)
+# Metadata database: the "airflow" database in the platform PostgreSQL (role prepared by scripts/install-airflow.sh;
+# the connection Secret comes from the vault through the External Secrets Operator)
 postgresql:
   enabled: false
 data:
   metadataSecretName: airflow-metadata
 
-# Fixed keys, generated once and kept in Secrets (otherwise they would change on every install)
+# Fixed keys, kept in the vault and delivered as Secrets (otherwise they would change on every install)
 fernetKeySecretName: airflow-fernet
 apiSecretKeySecretName: airflow-api-secret
 jwtSecretName: airflow-jwt
@@ -57,7 +58,7 @@ workers:
       requests: {cpu: 100m, memory: 384Mi}
       limits: {memory: 1Gi}
 
-# lakeFS connection for task pods (the Secret is copied by install-airflow.sh)
+# lakeFS connection for task pods (Secret lakefs-credentials, derived from data-lakefs-auth in the vault)
 env:
   - {name: LAKEFS_ENDPOINT, value: "http://lakefs.data.svc.cluster.local:8000"}
   # Image the modbus tasks run in (published by that repository's CI, tag = commit SHA). Bump it to deploy new code.
