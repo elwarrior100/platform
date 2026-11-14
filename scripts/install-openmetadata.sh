@@ -11,8 +11,11 @@ VM="${LIMA_INSTANCE:-industrial}"
 . "$ROOT/scripts/lib.sh"
 
 # OpenSearch refuses to start with a low vm.max_map_count (persisted in /etc/sysctl.d; rerunning the script is safe)
-limactl shell "$VM" -- sudo sysctl -w vm.max_map_count=262144 >/dev/null
-limactl shell "$VM" -- sh -c 'echo "vm.max_map_count=262144" | sudo tee /etc/sysctl.d/99-opensearch.conf >/dev/null'
+# Only for the local Lima VM; on Oracle envs/oracle/bootstrap-vm.sh already sets it.
+if kubectl get nodes -o name | grep -q "lima-$VM"; then
+  limactl shell "$VM" -- sudo sysctl -w vm.max_map_count=262144 >/dev/null
+  limactl shell "$VM" -- sh -c 'echo "vm.max_map_count=262144" | sudo tee /etc/sysctl.d/99-opensearch.conf >/dev/null'
+fi
 
 kubectl get ns "$NS" >/dev/null 2>&1 || kubectl create ns "$NS"
 

@@ -22,7 +22,10 @@ url_password() { python3 -c 'import sys, urllib.parse; print(urllib.parse.unquot
 ensure_pg_role() {
   local role="$1" db="$2"
   {
-    cat                              # first line: the password, read by the shell inside the pod
+    # first line: the password, read by the shell inside the pod. `read` also accepts a value without a trailing
+    # newline (a Secret value has none), and printf adds it, so the SQL below always starts on its own line.
+    IFS= read -r pw || true
+    printf '%s\n' "$pw"
     cat <<SQL
 SELECT format('CREATE ROLE $role LOGIN PASSWORD %L', :'pw') WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '$role') \gexec
 SELECT format('ALTER ROLE $role PASSWORD %L', :'pw') \gexec
