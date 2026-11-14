@@ -18,12 +18,25 @@ echo 'vm.swappiness=10' | sudo tee /etc/sysctl.d/99-swap.conf >/dev/null
 echo 'vm.max_map_count=262144' | sudo tee /etc/sysctl.d/99-opensearch.conf >/dev/null   # OpenSearch needs it
 sudo sysctl --system >/dev/null
 
+# Graceful node shutdown: on a reboot or an OCI maintenance stop, the kubelet holds the shutdown for up to 90 s and
+# stops pods in order (normal pods first, then critical ones), so Postgres and SeaweedFS flush to disk. Without this,
+# k3s (KillMode=process) lets systemd kill the containers mid-write: that corrupted lakeFS twice on the Mac.
+# - Kubernetes 1.36 only accepts it in the kubelet config file (the --shutdown-grace-period flag is gone).
+# - systemd-logind must allow a 90 s delay: Ubuntu's unattended-upgrades caps it at 30 s in a file that sorts after
+#   99-*.conf, so ours is named zz-* to be read last.
+sudo mkdir -p /etc/systemd/logind.conf.d /var/lib/rancher/k3s/agent/etc/kubelet.conf.d
+printf '[Login]\nInhibitDelayMaxSec=120\n' | sudo tee /etc/systemd/logind.conf.d/zz-graceful-shutdown.conf >/dev/null
+sudo systemctl restart systemd-logind
+printf 'apiVersion: kubelet.config.k8s.io/v1beta1\nkind: KubeletConfiguration\nshutdownGracePeriod: 90s\nshutdownGracePeriodCriticalPods: 30s\n' \
+  | sudo tee /var/lib/rancher/k3s/agent/etc/kubelet.conf.d/99-graceful-shutdown.conf >/dev/null
+
 # k3s, pinned. The API certificate also covers the Tailscale name and IP, so kubectl works from the Mac.
 if ! command -v k3s >/dev/null || ! k3s --version | grep -q "$K3S_VERSION"; then
   TS_IP="$(tailscale ip -4)"
   curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="$K3S_VERSION" sh -s - server \
     --write-kubeconfig-mode 644 --tls-san "$HOST" --tls-san "$TS_IP" >/dev/null
 fi
+sudo systemctl restart k3s        # picks up config.yaml; pods keep running (KillMode=process)
 for _ in $(seq 1 30); do sudo k3s kubectl get nodes 2>/dev/null | grep -q ' Ready' && break; sleep 5; done
 echo "k3s: $(k3s --version | head -1) | swap: $(swapon --show --noheadings | awk '{print $3}') | kernel: $(uname -r)"
 REMOTE
