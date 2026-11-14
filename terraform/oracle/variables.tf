@@ -50,3 +50,13 @@ variable "eso_reader_email" {
   description = "Primary email for the eso-reader user (Identity Domains require one). Set in terraform.tfvars, not in git"
   type        = string
 }
+
+variable "vcn_id" {
+  description = "OCID of the VCN created in the console (data-plataform)"
+  type        = string
+}
+
+variable "security_list_ocid" {
+  description = "OCID of the security list of the public subnet, adopted by network.tf"
+  type        = string
+}
