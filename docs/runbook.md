@@ -20,7 +20,7 @@ to the local Lima cluster).
   `kubectl delete pods -A --field-selector=status.phase=Failed`), Postgres log says `database system was shut down`
   (clean), the writer logs `exportado` again.
 
-## The Airflow scheduler crash-loops after a reboot (known Airflow 3.2.2 bug)
+## The Airflow scheduler crash-loops after a reboot (seen with Airflow 3.2.2)
 Symptom: `airflow-scheduler` in CrashLoopBackOff, log ends in `adopt_or_reset_orphaned_tasks` ...
 `DetachedInstanceError`. Cause: a task was running when the node stopped; on start the scheduler tries to adopt that
 orphan and crashes while logging it.
@@ -39,8 +39,30 @@ Seen on 2026-11-14 after the graceful-shutdown reboot test. Check newer Airflow 
    (`scripts/lakefs-repo.sh` does it).
 3. Set the spool batch back to `pending` and scale the writer to 1. Reconcile (project: `tests/phase3/run.sh`).
 
+## An alarm email arrived (OCI Notifications, topic platform-alerts)
+| Alarm | First look |
+|---|---|
+| VM not reporting | `ssh ubuntu@platform-oracle`; if no answer, OCI console: instance state, serial console |
+| CPU > 90% / memory > 92% | Grafana (`./scripts/ui.sh`, :3000), "Kubernetes / Compute Resources / Namespace"; `kubectl top pods -A` |
+| no successful backup in 26 h | `kubectl -n backup get jobs`; logs of the newest `pg-backup` job |
+| no successful lake copy in 26 h | `kubectl -n backup get jobs`; logs of the newest `lake-sync` job (it refuses to overwrite: an "immutable" error means an object changed, which lakeFS objects never should) |
+| silver not updated for 3 h | Airflow `silver_hourly` runs (a G2 fail is expected for incomplete hours); writer logs; `kubectl -n ops logs` of the last freshness job |
+| bucket above N GB | `oci os object list` on the bucket; dumps expire after 14 days, the lake copy only grows |
+
+## A new job pod cannot connect for its first seconds
+kube-router adds a new pod to the network-policy allow-lists a few seconds after it starts. Jobs must retry their
+first connection (pg-backup waits for `pg_isready`). Symptom: "Connection refused" that disappears on a retry.
+
+## Restore the lake (lakeFS metadata + objects)
+1. Stop writers: scale `ingest/writer` and pause the Airflow DAGs.
+2. Objects: `rclone copy oci:platform-lake-backup lake:lake` (same configuration as the lake-sync job, reversed),
+   from a pod in the `backup` namespace.
+3. Metadata: restore the `lakefs` database from the newest complete dump (see below), then restart lakeFS.
+4. Check: list `main` in lakeFS and read a bronze and a silver file; reconcile the spool (project: tests/phase3/run.sh).
+
 ## Restore a database
-- Backups: `platform-backups/<date>/<HHMMSS>/` in Object Storage (one prefix per run, nightly, kept 14 days). Prove they restore at any time:
+- Backups: `platform-backups/<date>/<HHMMSS>/` in Object Storage (one prefix per run, nightly, kept 14 days); a run
+  is complete only if it has `_COMPLETE` (written last). The lake objects are copied nightly to `platform-lake-backup`. Prove they restore at any time:
   `./scripts/pg-restore-test.sh` (restores into scratch databases and compares row counts).
 - Real restore: scale the application to 0, `pg_restore --clean -d <db>` from the dump (same image as Postgres),
   scale back up.
