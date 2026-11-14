@@ -15,10 +15,18 @@ spec:
     - to:   # cloud metadata endpoint: the VM's instance principal (the reason these jobs live in this namespace)
         - ipBlock: {cidr: 169.254.169.254/32}
       ports: [{port: 80, protocol: TCP}]
-    - to:   # OCI APIs (Object Storage, Monitoring, auth) are public HTTPS endpoints: any public address, port 443 only
-        - ipBlock:
-            cidr: 0.0.0.0/0
-            except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, 100.64.0.0/10]
+    # OCI APIs (Object Storage, Monitoring, auth): only the Oracle Services Network ranges of eu-madrid-1 (tag OSN in
+    # https://docs.oracle.com/en-us/iaas/tools/public_ip_ranges.json), port 443. Not the "OCI" ranges: those are other
+    # customers' public addresses. scripts/check-oci-cidrs.sh (weekly in CI) fails if Oracle changes this list.
+    - to:   # oci-osn-cidrs:begin
+        - ipBlock: {cidr: 79.72.20.0/23}
+        - ipBlock: {cidr: 130.110.239.0/24}
+        - ipBlock: {cidr: 134.70.176.0/22}
+        - ipBlock: {cidr: 140.91.78.0/23}
+        - ipBlock: {cidr: 140.204.112.128/25}
+        - ipBlock: {cidr: 155.248.136.0/22}
+        - ipBlock: {cidr: 155.248.140.0/25}
+      # oci-osn-cidrs:end
       ports: [{port: 443, protocol: TCP}]
     - to:   # Postgres (dump) and SeaweedFS S3 (lake copy)
         - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: data}}

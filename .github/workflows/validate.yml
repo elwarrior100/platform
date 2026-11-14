@@ -6,12 +6,24 @@ name: validate
 on:
   push:
   pull_request:
+  schedule:
+    - cron: "17 6 * * 1"      # Mondays: has Oracle changed the service ranges the egress policies allow?
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
+  oci-ranges:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: OCI service ranges in the backup and ops egress policies
+        run: ./scripts/check-oci-cidrs.sh
+
   validate:
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
