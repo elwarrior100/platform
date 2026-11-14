@@ -15,5 +15,5 @@ opensearch:
       cpu: "200m"
       memory: "1500M"
     limits:
-      cpu: "1000m"        # at most half of the 2 OCPU on Oracle
+      cpu: "1"            # at most half of the 2 OCPU on Oracle (written as Kubernetes stores it, so Argo CD sees no diff)
       memory: "2048M"
