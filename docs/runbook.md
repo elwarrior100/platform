@@ -54,9 +54,14 @@ kube-router adds a new pod to the network-policy allow-lists a few seconds after
 first connection (pg-backup waits for `pg_isready`). Symptom: "Connection refused" that disappears on a retry.
 
 ## Restore the lake (lakeFS metadata + objects)
+Drill first, at any time and without touching anything live: `KUBECONFIG=~/.kube/oracle.yaml ./scripts/lake-restore-test.sh`
+(rebuilds lakeFS from the newest dump and the object copy in a throw-away namespace, then reads every object on
+`main`). The real restore:
 1. Stop writers: scale `ingest/writer` and pause the Airflow DAGs.
 2. Objects: `rclone copy oci:platform-lake-backup lake:lake` (same configuration as the lake-sync job, reversed),
-   from a pod in the `backup` namespace.
+   from a pod in the `backup` namespace labelled `app: lake-sync` (SeaweedFS only accepts the lake copy and lakeFS).
+   The backup key is read-only (`backup-seaweedfs-reader`): for the reverse copy use the admin key of
+   `data-seaweedfs-auth`, in a temporary Secret deleted afterwards.
 3. Metadata: restore the `lakefs` database from the newest complete dump (see below), then restart lakeFS.
 4. Check: list `main` in lakeFS and read a bronze and a silver file; reconcile the spool (project: tests/phase3/run.sh).
 
@@ -76,3 +81,8 @@ first connection (pg-backup waits for `pg_isready`). Symptom: "Connection refuse
 ## Where are the passwords?
 `./scripts/vault-get.sh <secret> <field> | pbcopy`, e.g. `platform-argocd-admin-oracle password`,
 `openmetadata-admin-oracle password`. Never in git, never printed.
+
+## Oracle changed its service addresses
+The backup and ops jobs may only reach the Oracle Services Network ranges of eu-madrid-1. `validate.yml` runs
+`./scripts/check-oci-cidrs.sh` every Monday; if it fails (or the backup alarms fire with "connection timed out"),
+copy the `+` lines it prints into the `oci-osn-cidrs` block of both egress policies and promote.
