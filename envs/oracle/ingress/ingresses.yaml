@@ -1,0 +1,90 @@
+# Web UIs through the k3s ingress controller (Traefik), so no tunnel is needed.
+# Oracle: the Tailscale IP of the VM. sslip.io answers <anything>.100.108.9.15.sslip.io with 100.108.9.15, a private
+# tailnet address, so only devices on your tailnet can open these URLs. The OCI firewall keeps port 80 closed to the internet.
+# HTTP only: on Oracle the traffic is already encrypted end to end by Tailscale (WireGuard). SeaweedFS has no login and
+# is deliberately not published. scripts/ui.sh (port-forward tunnels) still works as an alternative.
+---
+# Airflow: http://airflow.100.108.9.15.sslip.io
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: airflow
+  namespace: airflow
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: airflow.100.108.9.15.sslip.io
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: {name: airflow-api-server, port: {number: 8080}}
+---
+# Grafana: http://grafana.100.108.9.15.sslip.io
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: grafana
+  namespace: monitoring
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: grafana.100.108.9.15.sslip.io
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: {name: monitoring-grafana, port: {number: 80}}
+---
+# Argo CD: http://argocd.100.108.9.15.sslip.io
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: argocd
+  namespace: argocd
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: argocd.100.108.9.15.sslip.io
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: {name: argocd-server, port: {number: 80}}
+---
+# lakeFS: http://lakefs.100.108.9.15.sslip.io
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: lakefs
+  namespace: data
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: lakefs.100.108.9.15.sslip.io
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: {name: lakefs, port: {number: 8000}}
+---
+# OpenMetadata: http://openmetadata.100.108.9.15.sslip.io
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: openmetadata
+  namespace: openmetadata
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: openmetadata.100.108.9.15.sslip.io
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: {name: openmetadata, port: {number: 8585}}

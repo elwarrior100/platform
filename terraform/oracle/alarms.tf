@@ -86,7 +86,7 @@ resource "oci_identity_policy" "metrics" {
 }
 
 # The hourly silver must keep up: a job in the backup namespace checks the newest silver commit in lakeFS every 30 min
-# and posts silver_fresh while it is less than 3 h old (envs/oracle/backup/silver-freshness.yaml). No data point for
+# and posts silver_fresh while it is less than 3 h old (envs/oracle/ops/silver-freshness.yaml). No data point for
 # 3 h means the pipeline stalled (or the check itself stopped).
 resource "oci_monitoring_alarm" "silver_stale" {
   compartment_id               = var.compartment_id

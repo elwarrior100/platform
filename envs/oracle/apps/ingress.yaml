@@ -1,0 +1,22 @@
+# Web UIs on http://<service>.100.108.9.15.sslip.io through Traefik (envs/oracle/ingress).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ingress
+  namespace: argocd
+  labels:
+    platform/git-source: "true"     # reads this repository: each environment sets which branch
+  annotations:
+    argocd.argoproj.io/sync-wave: "4"
+spec:
+  project: platform
+  source:
+    repoURL: https://github.com/elwarrior100/platform.git
+    targetRevision: main
+    path: envs/oracle/ingress
+  destination:
+    server: https://kubernetes.default.svc
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

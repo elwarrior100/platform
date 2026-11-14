@@ -4,3 +4,4 @@ kind: Kustomization
 resources:
   - ../../../platform/argocd/apps
   - secret-store.yaml
+  - ingress.yaml

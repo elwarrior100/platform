@@ -31,4 +31,6 @@ spec:
         - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: ingest}}     # the writer (bronze)
         - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: airflow}}    # silver tasks
         - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: ops}}        # freshness check
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kube-system}}   # Traefik: the web UI
+          podSelector: {matchLabels: {app.kubernetes.io/name: traefik}}
       ports: [{port: 8000, protocol: TCP}]

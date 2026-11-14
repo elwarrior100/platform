@@ -1,0 +1,89 @@
+# Web UIs through the k3s ingress controller (Traefik), so no tunnel is needed.
+# the Mac: Lima forwards the VM's port 80 to 127.0.0.1, so *.localhost works in any browser.
+# HTTP only: on Oracle the traffic is already encrypted end to end by Tailscale (WireGuard). SeaweedFS has no login and
+# is deliberately not published. scripts/ui.sh (port-forward tunnels) still works as an alternative.
+---
+# Airflow: http://airflow.localhost
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: airflow
+  namespace: airflow
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: airflow.localhost
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: {name: airflow-api-server, port: {number: 8080}}
+---
+# Grafana: http://grafana.localhost
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: grafana
+  namespace: monitoring
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: grafana.localhost
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: {name: monitoring-grafana, port: {number: 80}}
+---
+# Argo CD: http://argocd.localhost
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: argocd
+  namespace: argocd
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: argocd.localhost
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: {name: argocd-server, port: {number: 80}}
+---
+# lakeFS: http://lakefs.localhost
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: lakefs
+  namespace: data
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: lakefs.localhost
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: {name: lakefs, port: {number: 8000}}
+---
+# OpenMetadata: http://openmetadata.localhost
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: openmetadata
+  namespace: openmetadata
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: openmetadata.localhost
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: {name: openmetadata, port: {number: 8585}}
