@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Prepares the secrets and the database, and installs (or upgrades) Airflow. Idempotent.
+# Prepares the database and installs (or upgrades) Airflow. Idempotent. Secrets come from the vault (ADR-011).
 # No password goes through arguments or appears on screen.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -7,34 +7,15 @@ export KUBECONFIG="${KUBECONFIG:-$HOME/.lima/industrial/copied-from-guest/kubeco
 NS=airflow
 CHART_VERSION=1.22.0
 
-rand() { openssl rand -base64 36 | tr -d '/+=\n' | cut -c1-32; }
-secret_exists() { kubectl -n "$NS" get secret "$1" >/dev/null 2>&1; }
-
+. "$ROOT/scripts/lib.sh"
 kubectl get ns "$NS" >/dev/null 2>&1 || kubectl create ns "$NS"
 
-if ! secret_exists airflow-metadata; then
-  PW="$(rand)"
-  {
-    printf '%s\n' "$PW"
-    cat <<'SQL'
-SELECT format('CREATE ROLE airflow LOGIN PASSWORD %L', :'pw') WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'airflow') \gexec
-SELECT format('ALTER ROLE airflow PASSWORD %L', :'pw') \gexec
-SELECT 'CREATE DATABASE airflow OWNER airflow' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'airflow') \gexec
-SQL
-  } | kubectl -n data exec -i postgres-0 -- sh -c 'read PW; psql -v ON_ERROR_STOP=1 -q -U postgres -d postgres -v pw="$PW" -f -'
-  kubectl -n "$NS" create secret generic airflow-metadata \
-    --from-literal=connection="postgresql+psycopg2://airflow:${PW}@postgres.data.svc.cluster.local:5432/airflow"
-fi
-secret_exists airflow-fernet || kubectl -n "$NS" create secret generic airflow-fernet \
-  --from-literal=fernet-key="$(openssl rand -base64 32 | tr '+/' '-_')"
-secret_exists airflow-api-secret || kubectl -n "$NS" create secret generic airflow-api-secret --from-literal=api-secret-key="$(rand)"
-secret_exists airflow-jwt || kubectl -n "$NS" create secret generic airflow-jwt --from-literal=jwt-secret="$(rand)"
-secret_exists airflow-admin || kubectl -n "$NS" create secret generic airflow-admin --from-literal=password="$(rand)"
-
-# lakeFS credentials: copied from the ingest namespace (never shown on screen)
-secret_exists lakefs-credentials || kubectl -n ingest get secret lakefs-credentials -o json \
-  | python3 -c 'import json,sys; d=json.load(sys.stdin); print(json.dumps({"apiVersion":"v1","kind":"Secret","metadata":{"name":"lakefs-credentials","namespace":"airflow"},"data":d["data"]}))' \
-  | kubectl apply -f - >/dev/null
+# Secrets come from the vault through the External Secrets Operator (platform/k8s/secrets/airflow.yaml).
+for s in airflow-metadata airflow-fernet airflow-api-secret airflow-jwt airflow-admin lakefs-credentials; do
+  wait_secret "$NS" "$s"
+done
+# Database and user "airflow", with the password inside the metadata connection URL.
+secret_value "$NS" airflow-metadata connection | url_password | ensure_pg_role airflow airflow
 
 kubectl apply -f "$ROOT/platform/k8s/airflow/logs-pvc.yaml" >/dev/null
 
