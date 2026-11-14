@@ -32,7 +32,14 @@ spec:
                   import base64, json, os, time, urllib.request
                   auth = base64.b64encode(f"{os.environ['LAKEFS_ACCESS_KEY_ID']}:{os.environ['LAKEFS_SECRET_ACCESS_KEY']}".encode()).decode()
                   url = "http://lakefs.data.svc.cluster.local:8000/api/v1/repositories/industrial-lake/refs/main/commits?amount=200"
-                  commits = json.load(urllib.request.urlopen(urllib.request.Request(url, headers={"Authorization": "Basic " + auth})))["results"]
+                  for attempt in range(30):   # network policies reach a new pod a few seconds after it starts
+                      try:
+                          commits = json.load(urllib.request.urlopen(urllib.request.Request(url, headers={"Authorization": "Basic " + auth}), timeout=5))["results"]
+                          break
+                      except OSError:
+                          time.sleep(2)
+                  else:
+                      raise SystemExit("lakeFS unreachable")
                   silver = [c["creation_date"] for c in commits if c["message"].startswith("silver")]
                   print(int(time.time() - max(silver)) if silver else 999999)
                   PY

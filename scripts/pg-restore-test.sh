@@ -54,6 +54,7 @@ spec:
             - -ec
             - |
               H=postgres.data.svc.cluster.local
+              for i in \$(seq 1 30); do pg_isready -q -h \$H -p 5432 && break; sleep 2; done   # network policies reach new pods after a few seconds
               counts() { psql -h \$H -U postgres -d \$1 -At -F ' ' -c "select n.nspname||'.'||c.relname from pg_class c join pg_namespace n on n.oid=c.relnamespace where c.relkind='r' and n.nspname not in ('pg_catalog','information_schema') order by 1" | while read t; do echo "\$t \$(psql -h \$H -U postgres -d \$1 -At -c "select count(*) from \$t")"; done; }
               fail=0
               for f in /dump/*.dump; do
