@@ -1,77 +1,14 @@
-# Block the cloud metadata endpoint (169.254.169.254) for every pod in every workload namespace. On Oracle that endpoint
-# hands out instance-principal credentials that can read the whole vault, so it is blocked in each namespace listed here.
-# Namespaces NOT listed can reach it: on purpose external-secrets (the operator) and backup (the nightly dump), plus
-# kube-system. A new workload namespace must be added here (the exemption is the namespace, never a pod label). Everything else is still allowed: only that one address is removed.
----
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: deny-cloud-metadata
-  namespace: data
-spec:
-  podSelector: {}                                   # every pod in this namespace, no exceptions
-  policyTypes: [Egress]
-  egress:
-    - to:
-        - namespaceSelector: {}          # any pod in the cluster (DNS, Postgres, lakeFS...)
-    - to:
-        - ipBlock:
-            cidr: 0.0.0.0/0
-            except: [169.254.169.254/32]
----
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: deny-cloud-metadata
-  namespace: ingest
-spec:
-  podSelector: {}                                   # every pod in this namespace, no exceptions
-  policyTypes: [Egress]
-  egress:
-    - to:
-        - namespaceSelector: {}          # any pod in the cluster (DNS, Postgres, lakeFS...)
-    - to:
-        - ipBlock:
-            cidr: 0.0.0.0/0
-            except: [169.254.169.254/32]
----
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: deny-cloud-metadata
-  namespace: ot
-spec:
-  podSelector: {}                                   # every pod in this namespace, no exceptions
-  policyTypes: [Egress]
-  egress:
-    - to:
-        - namespaceSelector: {}          # any pod in the cluster (DNS, Postgres, lakeFS...)
-    - to:
-        - ipBlock:
-            cidr: 0.0.0.0/0
-            except: [169.254.169.254/32]
+# Namespaces that need the internet (airflow: the DAG bundle from GitHub; argocd: GitHub and Helm repositories;
+# monitoring: scrapes everything) keep open egress EXCEPT the cloud metadata endpoint (169.254.169.254), which on
+# Oracle hands out instance-principal credentials that can read the whole vault. The namespaces that need no internet
+# have a strict allow-list instead (egress-allowlists.yaml). Not listed anywhere, on purpose: external-secrets and
+# backup (they use the instance principal) and kube-system. A new workload namespace must get one or the other.
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: deny-cloud-metadata
   namespace: airflow
-spec:
-  podSelector: {}                                   # every pod in this namespace, no exceptions
-  policyTypes: [Egress]
-  egress:
-    - to:
-        - namespaceSelector: {}          # any pod in the cluster (DNS, Postgres, lakeFS...)
-    - to:
-        - ipBlock:
-            cidr: 0.0.0.0/0
-            except: [169.254.169.254/32]
----
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: deny-cloud-metadata
-  namespace: openmetadata
 spec:
   podSelector: {}                                   # every pod in this namespace, no exceptions
   policyTypes: [Egress]

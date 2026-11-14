@@ -1,0 +1,80 @@
+# Default-deny egress with an allow-list, for the namespaces that never need the internet. Anything not listed is
+# refused, including the cloud metadata endpoint. Each rule says why it exists.
+---
+# data: Postgres, SeaweedFS and lakeFS only talk to each other
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: egress-allowlist
+  namespace: data
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:   # DNS (CoreDNS)
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kube-system}}
+          podSelector: {matchLabels: {k8s-app: kube-dns}}
+      ports: [{port: 53, protocol: UDP}, {port: 53, protocol: TCP}]
+    - to:   # pods of this namespace
+        - podSelector: {}
+---
+# ingest: collector -> OPC UA gateway; collector/writer -> spool (Postgres) and lakeFS
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: egress-allowlist
+  namespace: ingest
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:   # DNS (CoreDNS)
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kube-system}}
+          podSelector: {matchLabels: {k8s-app: kube-dns}}
+      ports: [{port: 53, protocol: UDP}, {port: 53, protocol: TCP}]
+    - to:   # OPC UA gateway
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: ot}}
+      ports: [{port: 4840, protocol: TCP}]
+    - to:   # Postgres (spool) and lakeFS
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: data}}
+      ports: [{port: 5432, protocol: TCP}, {port: 8000, protocol: TCP}]
+---
+# ot: the simulator and the gateway need nothing outside their pod
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: egress-allowlist
+  namespace: ot
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:   # DNS (CoreDNS)
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kube-system}}
+          podSelector: {matchLabels: {k8s-app: kube-dns}}
+      ports: [{port: 53, protocol: UDP}, {port: 53, protocol: TCP}]
+---
+# openmetadata: server <-> OpenSearch, its database, and the Kubernetes API (ingestion Jobs)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: egress-allowlist
+  namespace: openmetadata
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:   # DNS (CoreDNS)
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kube-system}}
+          podSelector: {matchLabels: {k8s-app: kube-dns}}
+      ports: [{port: 53, protocol: UDP}, {port: 53, protocol: TCP}]
+    - to:   # pods of this namespace
+        - podSelector: {}
+    - to:   # Postgres (OpenMetadata database)
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: data}}
+      ports: [{port: 5432, protocol: TCP}]
+    - to:   # Kubernetes API (service IP, then the node address after translation: local and Oracle)
+        - ipBlock: {cidr: 10.43.0.1/32}
+        - ipBlock: {cidr: 192.168.5.15/32}
+        - ipBlock: {cidr: 10.0.0.43/32}
+      ports: [{port: 443, protocol: TCP}, {port: 6443, protocol: TCP}]
