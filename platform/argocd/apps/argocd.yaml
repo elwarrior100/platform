@@ -1,0 +1,38 @@
+# Argo CD manages itself (same chart version and values as scripts/install-argocd.sh, which is now only needed to
+# bootstrap a brand-new cluster). prune: false so a mistake in git can never delete Argo CD; argocd-secret is
+# ignored because the Argo CD server writes its own keys and the admin password hash into it.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: argocd
+  namespace: argocd
+  labels:
+    platform/values-source-1: "true"   # source 1 reads this repository: each environment sets which branch
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  project: default
+  sources:
+    - repoURL: https://argoproj.github.io/argo-helm
+      chart: argo-cd
+      targetRevision: 10.11.1
+      helm:
+        releaseName: argocd
+        valueFiles: [$values/platform/argocd/values.yaml]
+    - repoURL: https://github.com/elwarrior100/platform.git
+      targetRevision: main
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: false
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+      - RespectIgnoreDifferences=true
+  ignoreDifferences:
+    - kind: Secret
+      name: argocd-secret
+      jsonPointers: [/data]

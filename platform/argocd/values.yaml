@@ -1,5 +1,5 @@
 # Values for the argo/argo-cd 10.11.1 chart (Argo CD v3.5.6).
-# Install: scripts/install-argocd.sh
+# Bootstrap with scripts/install-argocd.sh; afterwards Argo CD manages itself (platform/argocd/apps/argocd.yaml).
 configs:
   params:
     server.insecure: true        # no TLS on the service; access is via port-forward (no Ingress)
