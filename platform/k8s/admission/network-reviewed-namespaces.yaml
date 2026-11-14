@@ -1,0 +1,31 @@
+# A new namespace has no NetworkPolicy, so its pods can reach everything, including the cloud metadata endpoint (the
+# VM's instance principal). So no pod may start in a namespace unless that namespace carries the label
+# platform/network-reviewed, which says someone wrote (or deliberately skipped) its network policies; see
+# platform/k8s/00-namespaces.yaml. Kubernetes' own namespaces are exempt.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: network-reviewed-namespaces
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: [v1]
+        operations: [CREATE]
+        resources: [pods]
+  validations:
+    - expression: "has(namespaceObject.metadata.labels) && 'platform/network-reviewed' in namespaceObject.metadata.labels"
+      messageExpression: "'namespace ' + namespaceObject.metadata.name + ' has no platform/network-reviewed label: write its NetworkPolicies first (platform/k8s/00-namespaces.yaml)'"
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: network-reviewed-namespaces
+spec:
+  policyName: network-reviewed-namespaces
+  validationActions: [Deny]
+  matchResources:
+    namespaceSelector:
+      matchExpressions:
+        - {key: kubernetes.io/metadata.name, operator: NotIn, values: [kube-system, kube-public, kube-node-lease]}
