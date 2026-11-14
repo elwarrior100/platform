@@ -7,7 +7,7 @@ metadata:
   name: root
   namespace: argocd
 spec:
-  project: default
+  project: bootstrap      # platform/argocd/projects/bootstrap.yaml
   source:
     repoURL: https://github.com/elwarrior100/platform.git
     targetRevision: main

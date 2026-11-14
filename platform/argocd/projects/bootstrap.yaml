@@ -1,0 +1,20 @@
+# Argo CD project for the root application (app-of-apps) only. The root application renders envs/<env>/apps, which
+# holds nothing but Argo CD objects, so this project allows exactly that: this repository, the argocd namespace, the
+# kinds Application, ApplicationSet and AppProject, and no cluster-wide kind at all.
+# Note: whoever can change envs/<env>/apps can still define a broader AppProject; that is what branch protection on
+# this repository (main, and oracle through scripts/promote-oracle.sh) is for.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: bootstrap
+  namespace: argocd
+spec:
+  description: The root application (app-of-apps) and nothing else
+  sourceRepos: [https://github.com/elwarrior100/platform.git]
+  destinations:
+    - {server: https://kubernetes.default.svc, namespace: argocd}
+  clusterResourceWhitelist: []
+  namespaceResourceWhitelist:
+    - {group: argoproj.io, kind: Application}
+    - {group: argoproj.io, kind: ApplicationSet}
+    - {group: argoproj.io, kind: AppProject}
