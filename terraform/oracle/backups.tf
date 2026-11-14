@@ -45,6 +45,17 @@ resource "oci_objectstorage_bucket" "tfstate" {
   versioning     = "Enabled"
 }
 
+# Copy of the lake objects (SeaweedFS bucket "lake": bronze, silver, lakeFS metadata ranges), synced nightly so a
+# restore of the lakeFS database never points at objects that only lived on the VM disk. Not versioned: lakeFS
+# objects are immutable, and the copy job never deletes.
+resource "oci_objectstorage_bucket" "lake" {
+  compartment_id = oci_identity_compartment.backups.id
+  namespace      = data.oci_objectstorage_namespace.this.namespace
+  name           = "platform-lake-backup"
+  access_type    = "NoPublicAccess"
+  versioning     = "Disabled"
+}
+
 resource "oci_identity_policy" "backups" {
   compartment_id = var.compartment_id
   name           = "platform-backups"
@@ -52,6 +63,7 @@ resource "oci_identity_policy" "backups" {
   statements = [
     "Allow dynamic-group ${oci_identity_dynamic_group.platform_instances.name} to read buckets in compartment ${oci_identity_compartment.backups.name}",
     "Allow dynamic-group ${oci_identity_dynamic_group.platform_instances.name} to manage objects in compartment ${oci_identity_compartment.backups.name} where all {target.bucket.name = '${oci_objectstorage_bucket.backups.name}', any {request.permission = 'OBJECT_CREATE', request.permission = 'OBJECT_INSPECT', request.permission = 'OBJECT_READ'}}",
+    "Allow dynamic-group ${oci_identity_dynamic_group.platform_instances.name} to manage objects in compartment ${oci_identity_compartment.backups.name} where all {target.bucket.name = '${oci_objectstorage_bucket.lake.name}', any {request.permission = 'OBJECT_CREATE', request.permission = 'OBJECT_INSPECT', request.permission = 'OBJECT_READ', request.permission = 'OBJECT_OVERWRITE'}}",
     "Allow service objectstorage-eu-madrid-1 to manage object-family in compartment ${oci_identity_compartment.backups.name}",
   ]
 }

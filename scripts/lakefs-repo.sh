@@ -10,7 +10,9 @@ set -euo pipefail
 REPO="${1:?repository name}"
 BUCKET="${2:?bucket name}"
 export KUBECONFIG="${KUBECONFIG:-$HOME/.lima/industrial/copied-from-guest/kubeconfig.yaml}"
+# shellcheck source=scripts/lib.sh
 . "$(dirname "$0")/lib.sh"; show_target
+# shellcheck source=scripts/lib.sh
 . "$(dirname "$0")/lib.sh"
 
 wait_secret data lakefs-auth

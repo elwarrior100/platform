@@ -1,0 +1,57 @@
+# Nightly copy of the lake objects (SeaweedFS bucket "lake") to Object Storage (platform-lake-backup), so the
+# lakeFS metadata in the pg_dump always has its objects somewhere off the VM disk. "rclone copy" only adds new or
+# changed objects and never deletes (the VM may not delete there either). Runs after pg-backup (02:30).
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: lake-sync
+  namespace: backup
+spec:
+  schedule: "0 3 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      ttlSecondsAfterFinished: 86400
+      template:
+        metadata:
+          labels: {app: lake-sync}
+        spec:
+          restartPolicy: Never
+          volumes: [{name: cfg, emptyDir: {}}]
+          initContainers:
+            # the Object Storage namespace and the bucket's compartment are looked up with the instance principal,
+            # so no account identifier has to live in this public repository
+            - name: lookup
+              image: ghcr.io/oracle/oci-cli:latest@sha256:2127c2f50ee1353fa78cbf538ab91ffaccc0d02b6d0b4144530cef6ee69709f5
+              env: [{name: OCI_CLI_AUTH, value: instance_principal}]
+              command: [sh, -ec]
+              args:
+                - |
+                  NS=$(oci os ns get --query data --raw-output)
+                  COMP=$(oci os bucket get -ns "$NS" --bucket-name platform-lake-backup --query 'data."compartment-id"' --raw-output)
+                  printf 'export RCLONE_CONFIG_OCI_NAMESPACE=%s RCLONE_CONFIG_OCI_COMPARTMENT=%s\n' "$NS" "$COMP" > /cfg/oci.env
+              volumeMounts: [{name: cfg, mountPath: /cfg}]
+          containers:
+            - name: copy
+              image: rclone/rclone:1.71.2@sha256:3103526c506266a9ecdf064efe99bf3677d92ef6407af124d8c56b4f49cbaa51
+              envFrom: [{secretRef: {name: seaweedfs-s3}}]
+              env:
+                # source: SeaweedFS S3 gateway (keys from the secret above)
+                - {name: RCLONE_CONFIG_LAKE_TYPE, value: s3}
+                - {name: RCLONE_CONFIG_LAKE_PROVIDER, value: SeaweedFS}
+                - {name: RCLONE_CONFIG_LAKE_ENDPOINT, value: "http://seaweedfs.data.svc.cluster.local:8333"}
+                # target: OCI Object Storage with the VM's instance principal (no key)
+                - {name: RCLONE_CONFIG_OCI_TYPE, value: oracleobjectstorage}
+                - {name: RCLONE_CONFIG_OCI_PROVIDER, value: instance_principal_auth}
+                - {name: RCLONE_CONFIG_OCI_REGION, value: eu-madrid-1}
+              command: [sh, -ec]
+              args:
+                - |
+                  . /cfg/oci.env
+                  rclone copy lake:lake oci:platform-lake-backup --transfers 2 --checkers 4 --stats-one-line -v
+                  echo "lake objects in the backup: $(rclone size oci:platform-lake-backup --json)"
+              volumeMounts: [{name: cfg, mountPath: /cfg}]
+              resources: {requests: {cpu: 50m, memory: 64Mi}, limits: {memory: 256Mi}}

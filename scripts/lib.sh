@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Shared helpers for the install scripts. Source it: . "$(dirname "$0")/lib.sh"
 # Secrets are no longer created by scripts: the External Secrets Operator creates them from the OCI Vault
 # (ADR-011). Scripts only wait for them and use their values, never printing them.

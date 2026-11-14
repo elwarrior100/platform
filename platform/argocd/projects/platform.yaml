@@ -1,0 +1,32 @@
+# Argo CD project for the shared platform: which repositories its applications may use and where they may deploy.
+# Narrower than "default" (which allows anything): only this repository and the Helm repositories of the charts we
+# run, and only the platform namespaces plus the project namespaces whose network policies and secrets it manages.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: platform
+  namespace: argocd
+spec:
+  description: Shared data platform (github.com/elwarrior100/platform)
+  sourceRepos:
+    - https://github.com/elwarrior100/platform.git
+    - https://charts.external-secrets.io
+    - https://airflow.apache.org
+    - https://helm.open-metadata.org/
+    - https://prometheus-community.github.io/helm-charts
+    - https://argoproj.github.io/argo-helm
+  destinations:
+    - {server: https://kubernetes.default.svc, namespace: argocd}
+    - {server: https://kubernetes.default.svc, namespace: data}
+    - {server: https://kubernetes.default.svc, namespace: airflow}
+    - {server: https://kubernetes.default.svc, namespace: openmetadata}
+    - {server: https://kubernetes.default.svc, namespace: monitoring}
+    - {server: https://kubernetes.default.svc, namespace: backup}
+    - {server: https://kubernetes.default.svc, namespace: external-secrets}
+    - {server: https://kubernetes.default.svc, namespace: default}
+    - {server: https://kubernetes.default.svc, namespace: ingest}   # network policies and secrets of the project
+    - {server: https://kubernetes.default.svc, namespace: ot}
+    - {server: https://kubernetes.default.svc, namespace: kube-system}   # chart resources the operators install there
+    - {server: https://kubernetes.default.svc, namespace: ""}     # cluster-scoped resources (CRDs, namespaces, policies)
+  clusterResourceWhitelist:
+    - {group: "*", kind: "*"}           # the platform installs CRDs, admission policies, ClusterRoles, namespaces

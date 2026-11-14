@@ -1,4 +1,4 @@
-# The SeaweedFS pod accepts connections only from lakeFS, on the S3 gateway (8333). Its filer (8888) and the other
+# The SeaweedFS pod accepts connections only from lakeFS (and the nightly lake copy), on the S3 gateway (8333). Its filer (8888) and the other
 # internal ports have no authentication: without this, any pod could read or delete lake objects at <podIP>:8888 and
 # bypass lakeFS (and its gates). kubectl port-forward and exec still work (they do not go through the pod network).
 apiVersion: networking.k8s.io/v1
@@ -14,5 +14,7 @@ spec:
     - from:
         - podSelector:
             matchLabels: {app: lakefs}
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: backup}}   # nightly copy of the lake objects
+          podSelector: {matchLabels: {app: lake-sync}}
       ports:
         - {port: 8333, protocol: TCP}

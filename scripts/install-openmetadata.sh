@@ -5,12 +5,12 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 export KUBECONFIG="${KUBECONFIG:-$HOME/.lima/industrial/copied-from-guest/kubeconfig.yaml}"
+# shellcheck source=scripts/lib.sh
 . "$(dirname "$0")/lib.sh"; show_target
 NS=openmetadata
 VERSION=2.0.7
 VM="${LIMA_INSTANCE:-industrial}"
 
-. "$ROOT/scripts/lib.sh"
 
 # OpenSearch refuses to start with a low vm.max_map_count (persisted in /etc/sysctl.d; rerunning the script is safe)
 # Only for the local Lima VM; on Oracle envs/oracle/bootstrap-vm.sh already sets it.

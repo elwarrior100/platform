@@ -81,6 +81,23 @@ resource "oci_identity_policy" "metrics" {
   name           = "platform-post-metrics"
   description    = "The VM may post its own custom metrics (backup heartbeat), nothing else"
   statements = [
-    "Allow dynamic-group ${oci_identity_dynamic_group.platform_instances.name} to use metrics in tenancy where target.metrics.namespace = 'platform_backup'",
+    "Allow dynamic-group ${oci_identity_dynamic_group.platform_instances.name} to use metrics in tenancy where any {target.metrics.namespace = 'platform_backup', target.metrics.namespace = 'platform_pipeline'}",
   ]
+}
+
+# The hourly silver must keep up: a job in the backup namespace checks the newest silver commit in lakeFS every 30 min
+# and posts silver_fresh while it is less than 3 h old (envs/oracle/backup/silver-freshness.yaml). No data point for
+# 3 h means the pipeline stalled (or the check itself stopped).
+resource "oci_monitoring_alarm" "silver_stale" {
+  compartment_id               = var.compartment_id
+  metric_compartment_id        = var.compartment_id
+  display_name                 = "platform: silver not updated for 3 h"
+  namespace                    = "platform_pipeline"
+  query                        = "silver_fresh[1h].absent(3h)"
+  severity                     = "WARNING"
+  pending_duration             = "PT5M"
+  is_enabled                   = true
+  destinations                 = [oci_ons_notification_topic.alerts.id]
+  body                         = "No silver hour merged into lakeFS main for 3 hours. Check Airflow (silver_hourly runs) and the writer."
+  repeat_notification_duration = "PT6H"
 }

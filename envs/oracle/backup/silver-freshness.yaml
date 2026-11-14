@@ -1,0 +1,48 @@
+# Every 30 min: is the newest silver merge in lakeFS main less than 3 h old? If so, post silver_fresh to OCI
+# Monitoring. The OCI alarm "silver not updated for 3 h" (terraform/oracle/alarms.tf) fires when these stop.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: silver-freshness
+  namespace: backup
+spec:
+  schedule: "*/30 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      ttlSecondsAfterFinished: 3600
+      template:
+        metadata:
+          labels: {app: silver-freshness}
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: check
+              image: ghcr.io/oracle/oci-cli:latest@sha256:2127c2f50ee1353fa78cbf538ab91ffaccc0d02b6d0b4144530cef6ee69709f5
+              envFrom: [{secretRef: {name: lakefs-auth}}]
+              env: [{name: OCI_CLI_AUTH, value: instance_principal}]
+              command: [sh, -ec]
+              args:
+                - |
+                  AGE=$(python3 - <<'PY'
+                  import base64, json, os, time, urllib.request
+                  auth = base64.b64encode(f"{os.environ['LAKEFS_ACCESS_KEY_ID']}:{os.environ['LAKEFS_SECRET_ACCESS_KEY']}".encode()).decode()
+                  url = "http://lakefs.data.svc.cluster.local:8000/api/v1/repositories/industrial-lake/refs/main/commits?amount=200"
+                  commits = json.load(urllib.request.urlopen(urllib.request.Request(url, headers={"Authorization": "Basic " + auth})))["results"]
+                  silver = [c["creation_date"] for c in commits if c["message"].startswith("silver")]
+                  print(int(time.time() - max(silver)) if silver else 999999)
+                  PY
+                  )
+                  echo "newest silver merge: $AGE s ago"
+                  if [ "$AGE" -lt 10800 ]; then
+                    COMP=$(python3 -c 'import json,urllib.request; print(json.load(urllib.request.urlopen(urllib.request.Request("http://169.254.169.254/opc/v2/instance/", headers={"Authorization": "Bearer Oracle"})))["compartmentId"])')
+                    oci monitoring metric-data post --endpoint https://telemetry-ingestion.eu-madrid-1.oraclecloud.com \
+                      --metric-data "[{\"namespace\":\"platform_pipeline\",\"compartmentId\":\"$COMP\",\"name\":\"silver_fresh\",\"dimensions\":{\"cluster\":\"oracle\"},\"datapoints\":[{\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"value\":1}]}]" >/dev/null
+                    echo "heartbeat posted (silver_fresh)"
+                  else
+                    echo "silver is stale: no heartbeat (the OCI alarm will fire after 3 h without one)"
+                  fi
+              resources: {requests: {cpu: 20m, memory: 64Mi}, limits: {memory: 256Mi}}

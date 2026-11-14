@@ -3,6 +3,7 @@
 # Replaces the old bootstrap-secrets.sh, which generated passwords inside each cluster: now every cluster reads
 # the same values from the vault, and nothing is generated here.
 set -euo pipefail
+# shellcheck source=scripts/lib.sh
 . "$(dirname "$0")/lib.sh"
 export KUBECONFIG="${KUBECONFIG:-$HOME/.lima/industrial/copied-from-guest/kubeconfig.yaml}"
 show_target

@@ -1,0 +1,52 @@
+# Checks every push and pull request before Argo CD ever sees it: secrets scan, rendered Kustomize for both
+# environments, Kubernetes manifests against their schemas, Terraform format/validate, and shell scripts.
+# Tools are pinned by version and checksum; actions by commit SHA.
+name: validate
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0                 # gitleaks scans the whole history
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_version: 1.15.3
+      - name: tools (pinned by checksum)
+        run: |
+          curl -sSL -o kc.tgz https://github.com/yannh/kubeconform/releases/download/v0.8.0/kubeconform-linux-arm64.tar.gz
+          echo "1f53fc8e81258197a35e8603054162a5af1de8c5af13746c71ab680d9534ed87  kc.tgz" | sha256sum -c -
+          curl -sSL -o gl.tgz https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_arm64.tar.gz
+          echo "e4a487ee7ccd7d3a7f7ec08657610aa3606637dab924210b3aee62570fb4b080  gl.tgz" | sha256sum -c -
+          tar -xzf kc.tgz kubeconform && tar -xzf gl.tgz gitleaks && sudo mv kubeconform gitleaks /usr/local/bin/
+          sudo apt-get install -y -qq shellcheck >/dev/null
+      - name: secrets (gitleaks, full history)
+        run: gitleaks git . --no-banner --redact
+      - name: kustomize (both environments)
+        run: |
+          kubectl kustomize envs/local/apps > /tmp/local.yaml
+          kubectl kustomize envs/oracle/apps > /tmp/oracle.yaml
+          grep -c '^kind:' /tmp/local.yaml /tmp/oracle.yaml
+      - name: manifests (kubeconform)
+        run: |
+          kubeconform -strict -summary -ignore-missing-schemas \
+            -schema-location default \
+            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+            platform/k8s projects platform/argocd/apps platform/argocd/projects \
+            envs/local/secret-store envs/oracle/secret-store envs/oracle/backup /tmp/local.yaml /tmp/oracle.yaml
+      - name: terraform (fmt + validate, no backend)
+        working-directory: terraform/oracle
+        run: |
+          terraform fmt -check -recursive
+          terraform init -backend=false -input=false >/dev/null
+          terraform validate
+      - name: shell scripts (shellcheck, errors)
+        run: shellcheck -x -S error scripts/*.sh envs/oracle/*.sh

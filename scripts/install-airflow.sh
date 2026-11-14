@@ -4,11 +4,10 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 export KUBECONFIG="${KUBECONFIG:-$HOME/.lima/industrial/copied-from-guest/kubeconfig.yaml}"
+# shellcheck source=scripts/lib.sh
 . "$(dirname "$0")/lib.sh"; show_target
 NS=airflow
-CHART_VERSION=1.22.0
 
-. "$ROOT/scripts/lib.sh"
 kubectl get ns "$NS" >/dev/null 2>&1 || kubectl create ns "$NS"
 
 # Secrets come from the vault through the External Secrets Operator (platform/k8s/secrets/airflow.yaml).
