@@ -1,6 +1,8 @@
 # Every namespace of the platform, with Pod Security Standards: "baseline" is enforced (no privileged pods, host
 # namespaces, host ports, added capabilities...) and "restricted" is shown as warnings. monitoring is the only exception
 # (node-exporter reads the host's /proc and /sys through hostPath): privileged enforced, baseline warnings.
+# platform/network-reviewed: someone decided this namespace's network policies (which, in the comment). The admission
+# rule network-reviewed-namespaces refuses pods in any namespace without it (platform/k8s/admission).
 ---
 apiVersion: v1
 kind: Namespace
@@ -8,6 +10,7 @@ metadata:
   name: data
   labels:
     pod-security.kubernetes.io/enforce: baseline
+    platform/network-reviewed: "true"   # egress-allowlist + ingress rules (platform/k8s/network-policies)
     pod-security.kubernetes.io/warn: restricted
 ---
 apiVersion: v1
@@ -16,6 +19,7 @@ metadata:
   name: ot
   labels:
     pod-security.kubernetes.io/enforce: baseline
+    platform/network-reviewed: "true"   # egress-allowlist
     pod-security.kubernetes.io/warn: restricted
 ---
 apiVersion: v1
@@ -24,6 +28,7 @@ metadata:
   name: ingest
   labels:
     pod-security.kubernetes.io/enforce: baseline
+    platform/network-reviewed: "true"   # egress-allowlist
     pod-security.kubernetes.io/warn: restricted
 ---
 apiVersion: v1
@@ -32,6 +37,7 @@ metadata:
   name: airflow
   labels:
     pod-security.kubernetes.io/enforce: baseline
+    platform/network-reviewed: "true"   # deny-cloud-metadata
     pod-security.kubernetes.io/warn: restricted
 ---
 apiVersion: v1
@@ -40,6 +46,7 @@ metadata:
   name: openmetadata
   labels:
     pod-security.kubernetes.io/enforce: baseline
+    platform/network-reviewed: "true"   # egress-allowlist
     pod-security.kubernetes.io/warn: restricted
 ---
 apiVersion: v1
@@ -48,6 +55,7 @@ metadata:
   name: argocd
   labels:
     pod-security.kubernetes.io/enforce: baseline
+    platform/network-reviewed: "true"   # deny-cloud-metadata (+ the chart's own policies)
     pod-security.kubernetes.io/warn: restricted
 ---
 apiVersion: v1
@@ -56,6 +64,7 @@ metadata:
   name: external-secrets
   labels:
     pod-security.kubernetes.io/enforce: baseline
+    platform/network-reviewed: "true"   # no policy ON PURPOSE: it must reach the OCI Vault and, on Oracle, the instance principal
     pod-security.kubernetes.io/warn: restricted
 ---
 apiVersion: v1
@@ -64,6 +73,7 @@ metadata:
   name: default
   labels:
     pod-security.kubernetes.io/enforce: baseline
+    platform/network-reviewed: "true"   # deny-cloud-metadata
     pod-security.kubernetes.io/warn: restricted
 ---
 apiVersion: v1
@@ -72,4 +82,5 @@ metadata:
   name: monitoring
   labels:
     pod-security.kubernetes.io/enforce: privileged
+    platform/network-reviewed: "true"   # deny-cloud-metadata
     pod-security.kubernetes.io/warn: baseline
