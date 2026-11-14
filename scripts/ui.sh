@@ -14,6 +14,7 @@ UIS=(
   "SeaweedFS (files)|data|svc/seaweedfs|8888|8888|/"
   "Simulator (control)|ot|svc/ot-edge|8083|8080|/health"
   "Airflow|airflow|svc/airflow-api-server|8084|8080|/"
+  "OpenMetadata|openmetadata|svc/openmetadata|8585|8585|/"
   "OPC UA (use UaExpert)|ot|svc/ot-edge|4840|4840|-"
 )
 
