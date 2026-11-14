@@ -16,7 +16,7 @@ spec:
     path: envs/oracle/backup
   destination:
     server: https://kubernetes.default.svc
-    namespace: data
+    namespace: backup
   syncPolicy:
     automated:
       prune: true

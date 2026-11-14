@@ -4,6 +4,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 export KUBECONFIG="${KUBECONFIG:-$HOME/.lima/industrial/copied-from-guest/kubeconfig.yaml}"
+. "$(dirname "$0")/lib.sh"; show_target
 NS=airflow
 CHART_VERSION=1.22.0
 

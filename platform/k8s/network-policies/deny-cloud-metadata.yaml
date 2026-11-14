@@ -1,7 +1,7 @@
-# Block the cloud metadata endpoint (169.254.169.254) for every pod, except pods labelled
-# platform/metadata-access: "true". On Oracle that endpoint hands out instance-principal credentials that can read the
-# whole vault, so only the External Secrets Operator (its own namespace, not listed here) and the backup job may reach
-# it. Everything else is still allowed: these policies only remove that one address.
+# Block the cloud metadata endpoint (169.254.169.254) for every pod in every workload namespace. On Oracle that endpoint
+# hands out instance-principal credentials that can read the whole vault, so only two namespaces, NOT listed here, may
+# reach it: external-secrets (the operator) and backup (the nightly dump). The exemption is the namespace, not a pod
+# label, so a workload cannot grant itself access. Everything else is still allowed: only that one address is removed.
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -9,9 +9,7 @@ metadata:
   name: deny-cloud-metadata
   namespace: data
 spec:
-  podSelector:
-    matchExpressions:
-      - {key: platform/metadata-access, operator: DoesNotExist}
+  podSelector: {}                                   # every pod in this namespace, no exceptions
   policyTypes: [Egress]
   egress:
     - to:
@@ -27,9 +25,7 @@ metadata:
   name: deny-cloud-metadata
   namespace: ingest
 spec:
-  podSelector:
-    matchExpressions:
-      - {key: platform/metadata-access, operator: DoesNotExist}
+  podSelector: {}                                   # every pod in this namespace, no exceptions
   policyTypes: [Egress]
   egress:
     - to:
@@ -45,9 +41,7 @@ metadata:
   name: deny-cloud-metadata
   namespace: ot
 spec:
-  podSelector:
-    matchExpressions:
-      - {key: platform/metadata-access, operator: DoesNotExist}
+  podSelector: {}                                   # every pod in this namespace, no exceptions
   policyTypes: [Egress]
   egress:
     - to:
@@ -63,9 +57,7 @@ metadata:
   name: deny-cloud-metadata
   namespace: airflow
 spec:
-  podSelector:
-    matchExpressions:
-      - {key: platform/metadata-access, operator: DoesNotExist}
+  podSelector: {}                                   # every pod in this namespace, no exceptions
   policyTypes: [Egress]
   egress:
     - to:
@@ -81,9 +73,7 @@ metadata:
   name: deny-cloud-metadata
   namespace: openmetadata
 spec:
-  podSelector:
-    matchExpressions:
-      - {key: platform/metadata-access, operator: DoesNotExist}
+  podSelector: {}                                   # every pod in this namespace, no exceptions
   policyTypes: [Egress]
   egress:
     - to:
@@ -99,9 +89,7 @@ metadata:
   name: deny-cloud-metadata
   namespace: argocd
 spec:
-  podSelector:
-    matchExpressions:
-      - {key: platform/metadata-access, operator: DoesNotExist}
+  podSelector: {}                                   # every pod in this namespace, no exceptions
   policyTypes: [Egress]
   egress:
     - to:
@@ -117,9 +105,7 @@ metadata:
   name: deny-cloud-metadata
   namespace: default
 spec:
-  podSelector:
-    matchExpressions:
-      - {key: platform/metadata-access, operator: DoesNotExist}
+  podSelector: {}                                   # every pod in this namespace, no exceptions
   policyTypes: [Egress]
   egress:
     - to:

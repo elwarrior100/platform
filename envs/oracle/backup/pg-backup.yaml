@@ -1,3 +1,6 @@
+# Runs in its own namespace "backup": the only namespace allowed to reach the cloud metadata endpoint (the VM's
+# instance principal), with only the Postgres superuser password delivered to it.
+#
 # Nightly logical backup of every platform database (ingest spool, lakeFS metadata, Airflow, OpenMetadata) plus
 # the roles, uploaded to the platform-backups bucket (terraform/oracle/backups.tf). Oracle deletes dumps after
 # 14 days; the VM may create and read objects there but not delete them.
@@ -9,7 +12,7 @@ apiVersion: batch/v1
 kind: CronJob
 metadata:
   name: pg-backup
-  namespace: data
+  namespace: backup
 spec:
   schedule: "30 2 * * *"            # 02:30 UTC, away from the hourly silver run at :10
   concurrencyPolicy: Forbid
@@ -22,8 +25,8 @@ spec:
       template:
         metadata:
           labels:
-            app: pg-backup
-            platform/metadata-access: "true"     # needs the instance principal (see network-policies)
+            app: pg-backup                       # the backup namespace is the only one allowed to reach the
+                                                 # metadata endpoint (instance principal): see network-policies
         spec:
           restartPolicy: Never
           volumes:
@@ -56,8 +59,8 @@ spec:
                 - -ec
                 - |
                   NS=$(oci os ns get --query data --raw-output)
-                  PREFIX=$(date -u +%Y-%m-%d)
-                  oci os object bulk-upload -ns "$NS" -bn platform-backups --src-dir /dump --object-prefix "$PREFIX/" --overwrite
+                  PREFIX=$(date -u +%Y-%m-%d/%H%M%S)      # one prefix per run: a retry never overwrites (the VM may not)
+                  oci os object bulk-upload -ns "$NS" -bn platform-backups --src-dir /dump --object-prefix "$PREFIX/"
                   echo "uploaded to platform-backups/$PREFIX/"
               volumeMounts: [{name: dump, mountPath: /dump}]
               resources: {requests: {cpu: 50m, memory: 128Mi}, limits: {memory: 512Mi}}

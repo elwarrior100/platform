@@ -5,6 +5,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 export KUBECONFIG="${KUBECONFIG:-$HOME/.lima/industrial/copied-from-guest/kubeconfig.yaml}"
+. "$(dirname "$0")/lib.sh"; show_target
 NS=openmetadata
 VERSION=2.0.7
 VM="${LIMA_INSTANCE:-industrial}"

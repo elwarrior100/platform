@@ -8,17 +8,17 @@ export KUBECONFIG="${KUBECONFIG:?set KUBECONFIG to the Oracle cluster}"
 DB_IMAGE="timescale/timescaledb:latest-pg17@sha256:6a6b7d7a346d7c6be03a310c240706f3bbc6d7adbdf3fbc07823570b34337f5e"
 CLI_IMAGE="ghcr.io/oracle/oci-cli:latest@sha256:2127c2f50ee1353fa78cbf538ab91ffaccc0d02b6d0b4144530cef6ee69709f5"
 
-kubectl -n data delete job pg-restore-test --ignore-not-found >/dev/null
+kubectl -n backup delete job pg-restore-test --ignore-not-found >/dev/null
 kubectl apply -f - >/dev/null <<EOF
 apiVersion: batch/v1
 kind: Job
-metadata: {name: pg-restore-test, namespace: data}
+metadata: {name: pg-restore-test, namespace: backup}
 spec:
   backoffLimit: 0
   ttlSecondsAfterFinished: 3600
   template:
     metadata:
-      labels: {app: pg-restore-test, platform/metadata-access: "true"}
+      labels: {app: pg-restore-test}
     spec:
       restartPolicy: Never
       volumes: [{name: dump, emptyDir: {}}]
@@ -31,7 +31,7 @@ spec:
             - -ec
             - |
               NS=\$(oci os ns get --query data --raw-output)
-              LATEST=\$(oci os object list -ns \$NS -bn platform-backups --all --query 'data[].name' --raw-output | tr -d '[]", ' | grep / | sort | tail -1 | cut -d/ -f1)
+              LATEST=\$(oci os object list -ns \$NS -bn platform-backups --all --query 'data[].name' --raw-output | tr -d '[]", ' | grep / | sort | tail -1 | xargs dirname)
               echo "latest backup: \$LATEST"
               oci os object bulk-download -ns \$NS -bn platform-backups --prefix "\$LATEST/" --download-dir /dump >/dev/null
               # the VM must NOT be able to delete a backup (policy allows create/read only)
@@ -75,8 +75,8 @@ spec:
           volumeMounts: [{name: dump, mountPath: /dump}]
 EOF
 echo "restore test running (a few minutes)..."
-kubectl -n data wait --for=condition=complete --timeout=900s job/pg-restore-test >/dev/null 2>&1 || true
-P=$(kubectl -n data get pods -l job-name=pg-restore-test -o name | head -1)
-kubectl -n data logs "$P" -c download | grep -E "latest backup|delete"
-kubectl -n data logs "$P" -c restore
-kubectl -n data get job pg-restore-test -o jsonpath='{.status.succeeded}' | grep -q 1
+kubectl -n backup wait --for=condition=complete --timeout=900s job/pg-restore-test >/dev/null 2>&1 || true
+P=$(kubectl -n backup get pods -l job-name=pg-restore-test -o name | head -1)
+kubectl -n backup logs "$P" -c download | grep -E "latest backup|delete"
+kubectl -n backup logs "$P" -c restore
+kubectl -n backup get job pg-restore-test -o jsonpath='{.status.succeeded}' | grep -q 1

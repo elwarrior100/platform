@@ -41,7 +41,8 @@ spec:
       labels:
         app: postgres
     spec:
-      priorityClassName: platform-data        # evicted / OOM-killed last (holds the spool and the lakeFS metadata)
+      priorityClassName: platform-data        # evicted last by the kubelet (it holds the spool and the lakeFS metadata);
+                                              # the kernel OOM killer follows QoS instead, and this pod is Burstable
       terminationGracePeriodSeconds: 60       # time to checkpoint on shutdown
       containers:
         - name: postgres

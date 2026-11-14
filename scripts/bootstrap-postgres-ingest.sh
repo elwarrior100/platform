@@ -4,6 +4,7 @@
 set -euo pipefail
 . "$(dirname "$0")/lib.sh"
 export KUBECONFIG="${KUBECONFIG:-$HOME/.lima/industrial/copied-from-guest/kubeconfig.yaml}"
+show_target
 
 wait_secret ingest ingest-db
 secret_value ingest ingest-db DATABASE_URL | url_password | ensure_pg_role ingest ingest

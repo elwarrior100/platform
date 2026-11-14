@@ -33,3 +33,6 @@ SELECT 'CREATE DATABASE $db OWNER $role' WHERE NOT EXISTS (SELECT FROM pg_databa
 SQL
   } | kubectl -n data exec -i postgres-0 -- sh -c 'read PW; psql -v ON_ERROR_STOP=1 -q -U postgres -d postgres -v pw="$PW" -f -'
 }
+
+# show_target: prints the cluster a script is about to change (the scripts default to the local Lima cluster).
+show_target() { echo "target cluster: $(kubectl get nodes -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo unreachable) (KUBECONFIG=$KUBECONFIG)" >&2; }
