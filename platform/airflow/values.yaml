@@ -22,7 +22,7 @@ config:
     # project repository and refreshes it every refresh_interval seconds: a pushed DAG shows up without a new image.
     # (one line: the chart copies this value into airflow.cfg). tracking_ref is the SAME commit as MODBUS_PIPELINES_IMAGE:
     # DAG and task code move together, in one platform commit, so they can never drift apart.
-    dag_bundle_config_list: '[{"name": "modbus", "classpath": "airflow.providers.git.bundles.git.GitDagBundle", "kwargs": {"repo_url": "https://github.com/elwarrior100/modbus_data_plataform.git", "tracking_ref": "50011b23a9433e04bf3cc2df1d99f4388f429667", "subdir": "pipelines/dags", "refresh_interval": 120}}]'
+    dag_bundle_config_list: '[{"name": "modbus", "classpath": "airflow.providers.git.bundles.git.GitDagBundle", "kwargs": {"repo_url": "https://github.com/elwarrior100/modbus_data_plataform.git", "tracking_ref": "c2d511fc3ec8008346cc1661dff73a86ba45d215", "subdir": "pipelines/dags", "refresh_interval": 120}}]'
 
 # Metadata database: the "airflow" database in the platform PostgreSQL (role prepared by scripts/install-airflow.sh;
 # the connection Secret comes from the vault through the External Secrets Operator)
@@ -66,7 +66,7 @@ workers:
 env:
   - {name: LAKEFS_ENDPOINT, value: "http://lakefs.data.svc.cluster.local:8000"}
   # Image the modbus tasks run in (published by that repository's CI, tag = commit SHA). Bump it to deploy new code.
-  - {name: MODBUS_PIPELINES_IMAGE, value: "ghcr.io/elwarrior100/modbus-pipelines:50011b23a9433e04bf3cc2df1d99f4388f429667"}
+  - {name: MODBUS_PIPELINES_IMAGE, value: "ghcr.io/elwarrior100/modbus-pipelines:c2d511fc3ec8008346cc1661dff73a86ba45d215"}
 extraEnvFrom: |
   - secretRef: {name: lakefs-credentials}
 
