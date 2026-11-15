@@ -119,5 +119,6 @@ removes objects from the lake, their copies stay until a person prunes them:
 KUBECONFIG=~/.kube/oracle.yaml ./scripts/lake-backup-prune.sh            # dry run: what would go
 KUBECONFIG=~/.kube/oracle.yaml ./scripts/lake-backup-prune.sh --apply    # asks you to type the count
 ```
-Only objects that are no longer in the lake AND were copied more than 30 days ago go. Forgetting it is not dangerous,
+Only objects missing from the lake for 30 days (counted from the first run that saw them missing, kept in
+`_prune/missing.json`) go, so an object lost to corruption keeps its copy. Forgetting it is not dangerous,
 only costly: the `storage_high` alarm (12 GB on the copy) is the reminder.

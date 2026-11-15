@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
 # Monthly prune of the immutable lake copy (Object Storage bucket platform-lake-backup), run BY A PERSON from the Mac
 # with their own OCI identity: the VM may create and read there but never delete (ADR-013), and that stays so.
-# A copied object is a candidate only if it is no longer in the lake (lakeFS GC removed it) AND it was copied more
-# than DAYS days ago, so a restore of any dump of the last weeks still finds its objects (ADR-015).
+# A copied object is a candidate only if it has been MISSING FROM THE LAKE FOR DAYS DAYS, counted from the first run
+# that saw it missing (state: _prune/missing.json in the bucket, written with your identity). The copy date says
+# nothing about when an object disappeared: an object lost to storage corruption must keep its copy until someone
+# notices, so nothing is ever deleted on the run that first sees it missing (ADR-015; 8th review).
 #   1. lake listing: a throw-away pod in the backup namespace with the READ-ONLY SeaweedFS key (labelled app=lake-sync,
 #      the only label SeaweedFS accepts from backup)
 #   2. copy listing: oci os object list, with your identity
-#   3. report; with --apply, asks you to type the number of objects, then deletes exactly those
+#   3. update the missing-since state, report; with --apply, asks you to type the number of objects, then deletes
+#      exactly those (and forgets them in the state)
 # Brakes: refuses an empty lake listing, and refuses to delete more than half of the copy (something is off).
 # Usage: KUBECONFIG=~/.kube/oracle.yaml ./scripts/lake-backup-prune.sh [--apply] [days, default 30]
 set -euo pipefail
@@ -53,23 +56,28 @@ NS=$(oci os ns get --query data --raw-output)
 oci os object list -ns "$NS" -bn "$BUCKET" --all --fields name,timeCreated,size \
   --query 'data[].[name,"time-created",size]' --output json > "$TMP/copy.json"
 
-echo "3/3 comparing (candidate: not in the lake and copied more than $DAYS days ago)..."
-python3 - "$TMP/lake.txt" "$TMP/copy.json" "$DAYS" "$TMP/candidates.txt" <<'PY'
+echo "3/3 comparing (candidate: missing from the lake for $DAYS days, counted from the first run that saw it)..."
+STATE=_prune/missing.json
+oci os object get -ns "$NS" -bn "$BUCKET" --name "$STATE" --file "$TMP/missing.json" >/dev/null 2>&1 || echo '{}' > "$TMP/missing.json"
+python3 - "$TMP/lake.txt" "$TMP/copy.json" "$DAYS" "$TMP/candidates.txt" "$TMP/missing.json" <<'PY'
 import datetime, json, sys
 lake = set(open(sys.argv[1]).read().split("\n")) - {""}
 copy = json.load(open(sys.argv[2]))
-cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=int(sys.argv[3]))
-cand = [(n, s) for n, t, s in copy
-        if n not in lake and not n.startswith("_prune/")
-        and datetime.datetime.fromisoformat(t.replace("Z", "+00:00")) < cutoff]
-gone = sum(1 for n, t, s in copy if n not in lake)
+now = datetime.datetime.now(datetime.timezone.utc)
+cutoff = now - datetime.timedelta(days=int(sys.argv[3]))
+seen = json.load(open(sys.argv[5]))                       # name -> first time a run saw it missing from the lake
+missing = {n: s for n, t, s in copy if n not in lake and not n.startswith("_prune/")}
+seen = {n: seen.get(n, now.isoformat()) for n in missing}  # back in the lake (or gone from the copy): forgotten
+cand = [(n, missing[n]) for n, first in seen.items() if datetime.datetime.fromisoformat(first) < cutoff]
+json.dump(seen, open(sys.argv[5], "w"), indent=0, sort_keys=True)
 open(sys.argv[4], "w").write("".join(n + "\n" for n, s in cand))
 print(f"lake: {len(lake)} objects | copy: {len(copy)} objects, {sum(s for _, _, s in copy) / 1e6:.1f} MB")
-print(f"in the copy but no longer in the lake: {gone} (of which older than the cut-off: {len(cand)})")
-print(f"candidates: {len(cand)} objects, {sum(s for _, s in cand) / 1e6:.1f} MB")
+print(f"missing from the lake: {len(missing)} (first seen missing on this run: {sum(1 for n in missing if seen[n] == now.isoformat())})")
+print(f"candidates (missing for over {sys.argv[3]} days): {len(cand)} objects, {sum(s for _, s in cand) / 1e6:.1f} MB")
 if copy and len(cand) > len(copy) / 2:
     print("REFUSED: more than half of the copy would go; check the lake listing first"); sys.exit(2)
 PY
+oci os object put -ns "$NS" -bn "$BUCKET" --name "$STATE" --file "$TMP/missing.json" --force >/dev/null   # the memory of what went missing when
 N=$(wc -l < "$TMP/candidates.txt" | tr -d ' ')
 if [ "$N" -eq 0 ]; then echo "nothing to prune"; exit 0; fi
 head -5 "$TMP/candidates.txt" | sed 's/^/  e.g. /'
@@ -81,3 +89,9 @@ while read -r name; do
   oci os object delete -ns "$NS" -bn "$BUCKET" --object-name "$name" --force >/dev/null && deleted=$((deleted + 1))
 done < "$TMP/candidates.txt"
 echo "deleted $deleted of $N objects"
+python3 - "$TMP/missing.json" "$TMP/candidates.txt" <<'PY'
+import json, sys
+seen = json.load(open(sys.argv[1])); gone = set(open(sys.argv[2]).read().split())
+json.dump({n: t for n, t in seen.items() if n not in gone}, open(sys.argv[1], "w"), indent=0, sort_keys=True)
+PY
+oci os object put -ns "$NS" -bn "$BUCKET" --name "$STATE" --file "$TMP/missing.json" --force >/dev/null
