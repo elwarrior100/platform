@@ -16,7 +16,6 @@ metadata:
   namespace: backup
 spec:
   schedule: "0 3 * * *"
-  suspend: true   # 2026-11-15: one PUT per object exceeds the free 50k Object Storage requests/month; redesign pending
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3

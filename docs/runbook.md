@@ -120,15 +120,15 @@ For changes that restart several heavy workloads, promote one application at a t
 wait for the load (`uptime` on the VM) to fall below ~3 before the next.
 
 ## Monthly: prune the lake copy (a person, from the Mac)
-The VM can never delete from `platform-lake-backup` (that is what makes the copy tamper-proof), so once lakeFS GC
-removes objects from the lake, their copies stay until a person prunes them:
+The lake copy is in bundles (ADR-016): a full one on the 1st, small incremental ones nightly, a catalog each time.
+The VM can never delete there (that makes the copy tamper-proof), so a person prunes it, early in the month:
 ```
-KUBECONFIG=~/.kube/oracle.yaml ./scripts/lake-backup-prune.sh            # dry run: what would go
-KUBECONFIG=~/.kube/oracle.yaml ./scripts/lake-backup-prune.sh --apply    # asks you to type the count
+./scripts/lake-backup-prune.sh            # dry run: what would go, and how many requests it costs
+./scripts/lake-backup-prune.sh --apply    # asks you to type the count
 ```
-Only objects missing from the lake for 30 days (counted from the first run that saw them missing, kept in
-`_prune/missing.json`) go, so an object lost to corruption keeps its copy. Forgetting it is not dangerous,
-only costly: the `storage_high` alarm (12 GB on the copy) is the reminder.
+It keeps the last two monthly cycles and removes older bundles and catalogs, plus the legacy object-by-object copy
+once a full bundle is 7 days old. Every deletion is one request (50,000 free a month; `--max` caps a run). The
+`objectstorage_requests_high` alarm warns when a day goes over 1,500 requests; `storage_high` when the copy passes 12 GB.
 
 ## HTTPS names (Tailscale Services on the VM)
 `https://<airflow|grafana|argocd|lakefs|openmetadata>.taila669aa.ts.net`: one Tailscale Service per UI, served by the

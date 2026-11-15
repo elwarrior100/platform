@@ -1,87 +1,59 @@
 #!/usr/bin/env bash
-# Monthly prune of the immutable lake copy (Object Storage bucket platform-lake-backup), run BY A PERSON from the Mac
-# with their own OCI identity: the VM may create and read there but never delete (ADR-013), and that stays so.
-# A copied object is a candidate only if it has been MISSING FROM THE LAKE FOR DAYS DAYS, counted from the first run
-# that saw it missing (state: _prune/missing.json in the bucket, written with your identity). The copy date says
-# nothing about when an object disappeared: an object lost to storage corruption must keep its copy until someone
-# notices, so nothing is ever deleted on the run that first sees it missing (ADR-015; 8th review).
-#   1. lake listing: a throw-away pod in the backup namespace with the READ-ONLY SeaweedFS key (labelled app=lake-sync,
-#      the only label SeaweedFS accepts from backup)
-#   2. copy listing: oci os object list, with your identity
-#   3. update the missing-since state, report; with --apply, asks you to type the number of objects, then deletes
-#      exactly those (and forgets them in the state)
-# Brakes: refuses an empty lake listing, and refuses to delete more than half of the copy (something is off).
-# Usage: KUBECONFIG=~/.kube/oracle.yaml ./scripts/lake-backup-prune.sh [--apply] [days, default 30]
+# Monthly prune of the lake copy (Object Storage bucket platform-lake-backup), run BY A PERSON from the Mac with their
+# own OCI identity: the VM may create and read there but never delete (ADR-013), and that stays so.
+# The copy is in bundles (ADR-016): bundles/<time>-full.tar.gz on the 1st of the month, <time>-incr.tar.gz nightly,
+# and catalog/<time>.txt.gz. What can go:
+#   - bundles and catalogs older than the SECOND newest full bundle (the last two monthly cycles stay: a restore
+#     needs the newest full and what came after it; the previous cycle is the spare)
+#   - the legacy object-by-object copy (anything outside bundles/ and catalog/), once a full bundle is at least 7 days
+#     old, i.e. the daily drill has restored from bundles for a week
+# Every deletion is one Object Storage request (50,000 a month are free): it prints how many it would use, refuses more
+# than --max at once, and is best run early in a month. Dry run by default; --apply asks you to type the count.
+# Usage: ./scripts/lake-backup-prune.sh [--apply] [--max N]      (default N = 20000)
 set -euo pipefail
-export KUBECONFIG="${KUBECONFIG:?set KUBECONFIG to the Oracle cluster}"
-APPLY=false; [ "${1:-}" = "--apply" ] && { APPLY=true; shift; }
-DAYS="${1:-30}"
-BUCKET=platform-lake-backup
-TMP="$(mktemp -d)"; chmod 700 "$TMP"
-POD="lake-ls-$(date +%s)"
-trap 'kubectl -n backup delete pod "$POD" --ignore-not-found --wait=false >/dev/null 2>&1 || true; rm -rf "$TMP"' EXIT
-
-echo "1/3 listing the lake (SeaweedFS, read-only key)..."
-kubectl apply -f - >/dev/null <<EOF
-apiVersion: v1
-kind: Pod
-metadata: {name: $POD, namespace: backup, labels: {app: lake-sync}}
-spec:
-  restartPolicy: Never
-  securityContext: {runAsNonRoot: true, seccompProfile: {type: RuntimeDefault}}
-  containers:
-    - name: ls
-      image: rclone/rclone:1.71.2@sha256:3103526c506266a9ecdf064efe99bf3677d92ef6407af124d8c56b4f49cbaa51
-      envFrom: [{secretRef: {name: seaweedfs-s3}}]
-      env:
-        - {name: RCLONE_CONFIG_LAKE_TYPE, value: s3}
-        - {name: RCLONE_CONFIG_LAKE_PROVIDER, value: SeaweedFS}
-        - {name: RCLONE_CONFIG_LAKE_ENDPOINT, value: "http://seaweedfs.data.svc.cluster.local:8333"}
-        - {name: HOME, value: /tmp}
-      command: [sh, -c, 'sleep 10; rclone lsf -R --files-only lake:lake && echo "#END"']
-      securityContext: {runAsUser: 65534, allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
-      resources: {requests: {cpu: 20m, memory: 64Mi}, limits: {memory: 256Mi}}
-EOF
-for _ in $(seq 1 60); do
-  phase=$(kubectl -n backup get pod "$POD" -o jsonpath='{.status.phase}')
-  case "$phase" in Succeeded|Failed) break ;; esac; sleep 3
+APPLY=false; MAX=20000
+while [ $# -gt 0 ]; do
+  case "$1" in --apply) APPLY=true ;; --max) MAX="${2:?number}"; shift ;; *) echo "unknown option $1" >&2; exit 1 ;; esac
+  shift
 done
-kubectl -n backup logs "$POD" > "$TMP/lake.raw"
-grep -qx '#END' "$TMP/lake.raw" || { echo "the lake listing did not finish (pod $phase); nothing done" >&2; exit 1; }
-grep -vx '#END' "$TMP/lake.raw" | grep -v NOTICE | sort -u > "$TMP/lake.txt"
-[ -s "$TMP/lake.txt" ] || { echo "the lake listing is empty: refusing (it would mark the whole copy)" >&2; exit 1; }
-
-echo "2/3 listing the copy ($BUCKET, your identity)..."
+BUCKET=platform-lake-backup
+TMP="$(mktemp -d)"; chmod 700 "$TMP"; trap 'rm -rf "$TMP"' EXIT
 NS=$(oci os ns get --query data --raw-output)
+echo "listing $BUCKET (about one request per 1000 objects)..."
 oci os object list -ns "$NS" -bn "$BUCKET" --all --fields name,timeCreated,size \
-  --query 'data[].[name,"time-created",size]' --output json > "$TMP/copy.json"
-
-echo "3/3 comparing (candidate: missing from the lake for $DAYS days, counted from the first run that saw it)..."
-STATE=_prune/missing.json
-oci os object get -ns "$NS" -bn "$BUCKET" --name "$STATE" --file "$TMP/missing.json" >/dev/null 2>&1 || echo '{}' > "$TMP/missing.json"
-python3 - "$TMP/lake.txt" "$TMP/copy.json" "$DAYS" "$TMP/candidates.txt" "$TMP/missing.json" <<'PY'
+  --query 'data[].[name,"time-created",size]' --output json > "$TMP/all.json"
+python3 - "$TMP/all.json" "$TMP/candidates.txt" "$MAX" <<'PY'
 import datetime, json, sys
-lake = set(open(sys.argv[1]).read().split("\n")) - {""}
-copy = json.load(open(sys.argv[2]))
+objs = json.load(open(sys.argv[1])); out, cap = sys.argv[2], int(sys.argv[3])
 now = datetime.datetime.now(datetime.timezone.utc)
-cutoff = now - datetime.timedelta(days=int(sys.argv[3]))
-seen = json.load(open(sys.argv[5]))                       # name -> first time a run saw it missing from the lake
-missing = {n: s for n, t, s in copy if n not in lake and not n.startswith("_prune/")}
-seen = {n: seen.get(n, now.isoformat()) for n in missing}  # back in the lake (or gone from the copy): forgotten
-cand = [(n, missing[n]) for n, first in seen.items() if datetime.datetime.fromisoformat(first) < cutoff]
-json.dump(seen, open(sys.argv[5], "w"), indent=0, sort_keys=True)
-open(sys.argv[4], "w").write("".join(n + "\n" for n, s in cand))
-print(f"lake: {len(lake)} objects | copy: {len(copy)} objects, {sum(s for _, _, s in copy) / 1e6:.1f} MB")
-print(f"missing from the lake: {len(missing)} (first seen missing on this run: {sum(1 for n in missing if seen[n] == now.isoformat())})")
-print(f"candidates (missing for over {sys.argv[3]} days): {len(cand)} objects, {sum(s for _, s in cand) / 1e6:.1f} MB")
-if copy and len(cand) > len(copy) / 2:
-    print("REFUSED: more than half of the copy would go; check the lake listing first"); sys.exit(2)
+when = lambda t: datetime.datetime.fromisoformat(t.replace("Z", "+00:00"))
+fulls = sorted((n, when(t)) for n, t, s in objs if n.startswith("bundles/") and n.endswith("-full.tar.gz"))
+stamp = lambda n: n.split("/")[1][:15]                     # 20261201T030000
+cand, reasons = [], {}
+if len(fulls) >= 2:                                        # keep from the second newest full onwards
+    keep_from = stamp(fulls[-2][0])
+    for n, t, s in objs:
+        if (n.startswith("bundles/") or n.startswith("catalog/")) and stamp(n) < keep_from:
+            cand.append((n, s)); reasons[n] = "older than the previous full cycle"
+legacy = [(n, s) for n, t, s in objs if not n.startswith(("bundles/", "catalog/"))]
+if legacy:
+    if fulls and (now - fulls[-1][1]).days >= 7:
+        cand += legacy; reasons.update({n: "legacy object-by-object copy" for n, _ in legacy})
+    else:
+        print(f"legacy object-by-object copy: {len(legacy)} objects kept until a full bundle is 7 days old")
+size = sum(s for _, s in cand) / 1e6
+print(f"bucket: {len(objs)} objects, {sum(s for *_, s in objs) / 1e6:.0f} MB | full bundles: {len(fulls)}")
+print(f"candidates: {len(cand)} objects, {size:.0f} MB -> about {len(cand)} delete requests (50,000 free a month)")
+for r in sorted(set(reasons.values())):
+    print(f"  {sum(1 for v in reasons.values() if v == r)}: {r}")
+if len(cand) > cap:
+    print(f"REFUSED: more than --max {cap} deletions in one run (raise --max, ideally early in a month)"); sys.exit(2)
+open(out, "w").write("".join(n + "\n" for n, _ in cand))
 PY
-oci os object put -ns "$NS" -bn "$BUCKET" --name "$STATE" --file "$TMP/missing.json" --force >/dev/null   # the memory of what went missing when
 N=$(wc -l < "$TMP/candidates.txt" | tr -d ' ')
-if [ "$N" -eq 0 ]; then echo "nothing to prune"; exit 0; fi
-head -5 "$TMP/candidates.txt" | sed 's/^/  e.g. /'
-if [ "$APPLY" != true ]; then echo "dry run: run again with --apply to delete these $N objects"; exit 0; fi
+[ "$N" -gt 0 ] || { echo "nothing to prune"; exit 0; }
+head -3 "$TMP/candidates.txt" | sed 's/^/  e.g. /'
+[ "$APPLY" = true ] || { echo "dry run: run again with --apply to delete these $N objects"; exit 0; }
 printf 'Delete %s objects from %s? Type the number to confirm: ' "$N" "$BUCKET"; read -r answer
 [ "$answer" = "$N" ] || { echo "not confirmed; nothing deleted"; exit 1; }
 deleted=0
@@ -89,9 +61,3 @@ while read -r name; do
   oci os object delete -ns "$NS" -bn "$BUCKET" --object-name "$name" --force >/dev/null && deleted=$((deleted + 1))
 done < "$TMP/candidates.txt"
 echo "deleted $deleted of $N objects"
-python3 - "$TMP/missing.json" "$TMP/candidates.txt" <<'PY'
-import json, sys
-seen = json.load(open(sys.argv[1])); gone = set(open(sys.argv[2]).read().split())
-json.dump({n: t for n, t in seen.items() if n not in gone}, open(sys.argv[1], "w"), indent=0, sort_keys=True)
-PY
-oci os object put -ns "$NS" -bn "$BUCKET" --name "$STATE" --file "$TMP/missing.json" --force >/dev/null

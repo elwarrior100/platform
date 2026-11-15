@@ -111,7 +111,7 @@ resource "oci_monitoring_alarm" "lake_sync_missing" {
   query                        = "lake_sync_success[1h].absent(26h)"
   severity                     = "CRITICAL"
   pending_duration             = "PT5M"
-  is_enabled                   = false # paused with the lake copy (2026-11-15, request budget)
+  is_enabled                   = true
   destinations                 = [oci_ons_notification_topic.alerts.id]
   body                         = "The nightly copy of the lake objects has not succeeded for 26 hours. Check: kubectl -n backup get jobs; logs of the latest lake-sync job."
   repeat_notification_duration = "PT12H"
@@ -126,7 +126,7 @@ resource "oci_monitoring_alarm" "lake_drill_failed" {
   query                        = "lake_drill_success[1h].min() < 1"
   severity                     = "CRITICAL"
   pending_duration             = "PT1M"
-  is_enabled                   = false # paused with the lake copy (2026-11-15, request budget)
+  is_enabled                   = true
   destinations                 = [oci_ons_notification_topic.alerts.id]
   body                         = "The lake restore drill ran and found objects missing or changed in the backup. Read: kubectl -n ops logs job/<latest lake-restore-drill job> -c check"
   repeat_notification_duration = "PT24H"
@@ -142,7 +142,7 @@ resource "oci_monitoring_alarm" "lake_drill_missing" {
   query                        = "lake_drill_success[1h].absent(2d)"
   severity                     = "WARNING"
   pending_duration             = "PT5M"
-  is_enabled                   = false # paused with the lake copy (2026-11-15, request budget)
+  is_enabled                   = true
   destinations                 = [oci_ons_notification_topic.alerts.id]
   body                         = "The daily lake restore drill (ops/lake-restore-drill, 04:15 UTC) has not passed for 2 days. Run ./scripts/lake-restore-test.sh and read its output."
   repeat_notification_duration = "PT24H"
@@ -175,6 +175,22 @@ resource "oci_monitoring_alarm" "lake_gc_check_missing" {
   is_enabled                   = true
   destinations                 = [oci_ons_notification_topic.alerts.id]
   body                         = "The daily GC check (ops/gc-freshness) posted nothing for 2 days. Check: kubectl -n ops get jobs."
+  repeat_notification_duration = "PT24H"
+}
+
+# Always Free includes 50,000 Object Storage requests a month; beyond that each 10k costs money. The lake copy once
+# needed ~17k a day (ADR-016): warn when a day goes over 1,500 (a 45k/month pace), before anything is charged.
+resource "oci_monitoring_alarm" "objectstorage_requests_high" {
+  compartment_id               = var.compartment_id
+  metric_compartment_id        = oci_identity_compartment.backups.id
+  display_name                 = "platform: Object Storage requests above the free pace"
+  namespace                    = "oci_objectstorage"
+  query                        = "AllRequests[1d].grouping().sum() > 1500"
+  severity                     = "WARNING"
+  pending_duration             = "PT5M"
+  is_enabled                   = true
+  destinations                 = [oci_ons_notification_topic.alerts.id]
+  body                         = "More than 1,500 Object Storage requests in a day (Always Free: 50,000 a month). Check what ran: kubectl -n backup get jobs; kubectl -n ops get jobs; the lake copy should be ~4 requests a night (ADR-016)."
   repeat_notification_duration = "PT24H"
 }
 
