@@ -24,7 +24,7 @@ spec:
             - name: check
               image: ghcr.io/oracle/oci-cli:latest@sha256:2127c2f50ee1353fa78cbf538ab91ffaccc0d02b6d0b4144530cef6ee69709f5
               envFrom: [{secretRef: {name: lakefs-auth}}]
-              env: [{name: OCI_CLI_AUTH, value: instance_principal}]
+              env: [{name: OCI_CLI_AUTH, value: instance_principal}, {name: HOME, value: /tmp}]
               command: [sh, -ec]
               args:
                 - |
@@ -55,5 +55,7 @@ spec:
                     echo "silver is stale: no heartbeat (the OCI alarm will fire after 3 h without one)"
                   fi
               resources: {requests: {cpu: 20m, memory: 64Mi}, limits: {memory: 256Mi}}
-              securityContext: {runAsUser: 1000, allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+              securityContext: {runAsUser: 1000, allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}, readOnlyRootFilesystem: true}
+              volumeMounts: [{name: tmp, mountPath: /tmp}]
           securityContext: {runAsNonRoot: true, seccompProfile: {type: RuntimeDefault}}
+          volumes: [{name: tmp, emptyDir: {sizeLimit: 512Mi}}]

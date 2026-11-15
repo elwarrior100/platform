@@ -31,6 +31,7 @@ spec:
           restartPolicy: Never
           volumes:
             - {name: dump, emptyDir: {}}
+            - {name: tmp, emptyDir: {sizeLimit: 512Mi}}
           initContainers:
             - name: dump
               image: timescale/timescaledb:latest-pg17@sha256:6a6b7d7a346d7c6be03a310c240706f3bbc6d7adbdf3fbc07823570b34337f5e
@@ -50,14 +51,15 @@ spec:
                     pg_dump -h $H -U postgres -Fc -f /dump/$db.dump $db
                   done
                   ls -l /dump
-              volumeMounts: [{name: dump, mountPath: /dump}]
+              volumeMounts: [{name: dump, mountPath: /dump}, {name: tmp, mountPath: /tmp}]
               resources: {requests: {cpu: 50m, memory: 128Mi}, limits: {memory: 512Mi}}
-              securityContext: {runAsUser: 70, allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+              securityContext: {runAsUser: 70, allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}, readOnlyRootFilesystem: true}
           containers:
             - name: upload
               image: ghcr.io/oracle/oci-cli:latest@sha256:2127c2f50ee1353fa78cbf538ab91ffaccc0d02b6d0b4144530cef6ee69709f5
               env:
                 - {name: OCI_CLI_AUTH, value: instance_principal}
+                - {name: HOME, value: /tmp}
               command:
                 - sh
                 - -ec
@@ -75,7 +77,7 @@ spec:
                   oci monitoring metric-data post --endpoint "https://telemetry-ingestion.$REGION.oraclecloud.com" \
                     --metric-data "[{\"namespace\":\"platform_backup\",\"compartmentId\":\"$COMP\",\"name\":\"backup_success\",\"dimensions\":{\"cluster\":\"oracle\"},\"datapoints\":[{\"timestamp\":\"$NOW\",\"value\":1}]}]" >/dev/null
                   echo "heartbeat posted (backup_success)"
-              volumeMounts: [{name: dump, mountPath: /dump}]
+              volumeMounts: [{name: dump, mountPath: /dump}, {name: tmp, mountPath: /tmp}]
               resources: {requests: {cpu: 50m, memory: 128Mi}, limits: {memory: 512Mi}}
-              securityContext: {runAsUser: 1000, allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+              securityContext: {runAsUser: 1000, allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}, readOnlyRootFilesystem: true}
           securityContext: {runAsNonRoot: true, seccompProfile: {type: RuntimeDefault}}

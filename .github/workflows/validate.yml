@@ -80,7 +80,7 @@ jobs:
         run: |
           trivy config --quiet --exit-code 1 --severity CRITICAL --skip-dirs .github,docs,scripts .
           for d in envs/oracle/backup envs/oracle/ops; do   # the namespaces with the instance principal: HIGH fails too
-            trivy config --quiet --exit-code 1 --severity HIGH,CRITICAL --ignorefile .github/trivy-backup-ops.ignore "$d"
+            trivy config --quiet --exit-code 1 --severity HIGH,CRITICAL "$d"
           done
           trivy config --quiet --exit-code 0 --severity HIGH --skip-dirs .github,docs,scripts . | grep -E '^│ .* [1-9][0-9]* +│$' || true
       - name: shell scripts (shellcheck, errors)

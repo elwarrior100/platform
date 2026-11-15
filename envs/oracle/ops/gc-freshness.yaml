@@ -52,7 +52,7 @@ spec:
           containers:
             - name: check
               image: ghcr.io/oracle/oci-cli:latest@sha256:2127c2f50ee1353fa78cbf538ab91ffaccc0d02b6d0b4144530cef6ee69709f5
-              env: [{name: OCI_CLI_AUTH, value: instance_principal}]
+              env: [{name: OCI_CLI_AUTH, value: instance_principal}, {name: HOME, value: /tmp}]
               command: [sh, -ec]
               args:
                 - |
@@ -85,5 +85,7 @@ spec:
                   oci monitoring metric-data post --endpoint "https://telemetry-ingestion.$REGION.oraclecloud.com" \
                     --metric-data "[{\"namespace\":\"platform_backup\",\"compartmentId\":\"$COMP\",\"name\":\"lake_gc_success\",\"dimensions\":{\"cluster\":\"oracle\"},\"datapoints\":[{\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"value\":$VALUE}]}]" >/dev/null
                   echo "heartbeat posted (lake_gc_success=$VALUE)"
-              securityContext: {runAsUser: 1000, allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+              securityContext: {runAsUser: 1000, allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}, readOnlyRootFilesystem: true}
               resources: {requests: {cpu: 20m, memory: 64Mi}, limits: {memory: 256Mi}}
+              volumeMounts: [{name: tmp, mountPath: /tmp}]
+          volumes: [{name: tmp, emptyDir: {sizeLimit: 512Mi}}]

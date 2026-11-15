@@ -21,13 +21,13 @@ spec:
           labels: {app: lake-sync}
         spec:
           restartPolicy: Never
-          volumes: [{name: cfg, emptyDir: {}}]
+          volumes: [{name: cfg, emptyDir: {}}, {name: tmp, emptyDir: {sizeLimit: 512Mi}}]
           initContainers:
             # the Object Storage namespace and the bucket's compartment are looked up with the instance principal,
             # so no account identifier has to live in this public repository
             - name: lookup
               image: ghcr.io/oracle/oci-cli:latest@sha256:2127c2f50ee1353fa78cbf538ab91ffaccc0d02b6d0b4144530cef6ee69709f5
-              env: [{name: OCI_CLI_AUTH, value: instance_principal}]
+              env: [{name: OCI_CLI_AUTH, value: instance_principal}, {name: HOME, value: /tmp}]
               command: [sh, -ec]
               args:
                 - |
@@ -35,8 +35,8 @@ spec:
                   NS=$(oci os ns get --query data --raw-output)
                   COMP=$(oci os bucket get -ns "$NS" --bucket-name platform-lake-backup --query 'data."compartment-id"' --raw-output)
                   printf 'export RCLONE_CONFIG_OCI_NAMESPACE=%s RCLONE_CONFIG_OCI_COMPARTMENT=%s RCLONE_CONFIG_OCI_REGION=%s\n' "$NS" "$COMP" "$REGION" > /cfg/oci.env
-              volumeMounts: [{name: cfg, mountPath: /cfg}]
-              securityContext: {runAsUser: 1000, allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+              volumeMounts: [{name: cfg, mountPath: /cfg}, {name: tmp, mountPath: /tmp}]
+              securityContext: {runAsUser: 1000, allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}, readOnlyRootFilesystem: true}
             - name: copy
               image: rclone/rclone:1.71.2@sha256:3103526c506266a9ecdf064efe99bf3677d92ef6407af124d8c56b4f49cbaa51
               envFrom: [{secretRef: {name: seaweedfs-s3}}]
@@ -55,13 +55,13 @@ spec:
                   . /cfg/oci.env
                   rclone copy lake:lake oci:platform-lake-backup --immutable --size-only --no-update-modtime --transfers 2 --checkers 4 --stats-one-line -v
                   echo "lake objects in the backup: $(rclone size oci:platform-lake-backup --json)"
-              volumeMounts: [{name: cfg, mountPath: /cfg}]
+              volumeMounts: [{name: cfg, mountPath: /cfg}, {name: tmp, mountPath: /tmp}]
               resources: {requests: {cpu: 50m, memory: 64Mi}, limits: {memory: 256Mi}}
-              securityContext: {runAsUser: 65534, allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+              securityContext: {runAsUser: 65534, allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}, readOnlyRootFilesystem: true}
           containers:
             - name: heartbeat          # runs only if the copy (an init container) succeeded
               image: ghcr.io/oracle/oci-cli:latest@sha256:2127c2f50ee1353fa78cbf538ab91ffaccc0d02b6d0b4144530cef6ee69709f5
-              env: [{name: OCI_CLI_AUTH, value: instance_principal}]
+              env: [{name: OCI_CLI_AUTH, value: instance_principal}, {name: HOME, value: /tmp}]
               command: [sh, -ec]
               args:
                 - |
@@ -71,5 +71,6 @@ spec:
                     --metric-data "[{\"namespace\":\"platform_backup\",\"compartmentId\":\"$1\",\"name\":\"lake_sync_success\",\"dimensions\":{\"cluster\":\"oracle\"},\"datapoints\":[{\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"value\":1}]}]" >/dev/null
                   echo "heartbeat posted (lake_sync_success)"
               resources: {requests: {cpu: 20m, memory: 64Mi}, limits: {memory: 256Mi}}
-              securityContext: {runAsUser: 1000, allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+              securityContext: {runAsUser: 1000, allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}, readOnlyRootFilesystem: true}
+              volumeMounts: [{name: tmp, mountPath: /tmp}]
           securityContext: {runAsNonRoot: true, seccompProfile: {type: RuntimeDefault}}
