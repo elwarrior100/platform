@@ -9,7 +9,7 @@ airflow:
 opensearch:
   enabled: true
   imagePullPolicy: IfNotPresent
-  opensearchJavaOpts: "-Xmx1g -Xms1g"
+  opensearchJavaOpts: "-Xmx512m -Xms512m"   # a catalog of a few dozen tables; 512m is the floor (2026-11-15: was 1g)
   persistence:
     size: 10Gi
     image: busybox
@@ -17,10 +17,10 @@ opensearch:
   resources:
     requests:
       cpu: "100m"         # measured ~20m; the request is what the scheduler reserves (2 OCPU, k3s needs its share)
-      memory: "1500M"
+      memory: "900M"
     limits:
       cpu: "1"            # at most half of the 2 OCPU on Oracle (written as Kubernetes stores it, so Argo CD sees no diff)
-      memory: "2048M"
+      memory: "1200M"
   majorVersion: '3'
   image:
     tag: 3.5.0@sha256:dbb01641baadae5104e18acd888bf05e8fdd9af3567fd30624a76ba3e5a31dec
