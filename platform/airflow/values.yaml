@@ -10,6 +10,12 @@ images:
     # 3.3.2 pinned by digest (a tag can be moved; a digest cannot). 3.2.2 had CRITICAL vulnerabilities.
     tag: "3.3.2@sha256:e9982ad3f49a60418622e1baf80c34b0daf3fa5091a336cb5ee61f0cdd189371"
     pullPolicy: IfNotPresent
+  # The task pods' template too: without this the chart fills it with its own default (3.2.2, CRITICAL CVEs), used by
+  # any task that does not set its own image (found by scripts/deployed-images.sh, 2026-11-15).
+  pod_template:
+    repository: apache/airflow
+    tag: "3.3.2@sha256:e9982ad3f49a60418622e1baf80c34b0daf3fa5091a336cb5ee61f0cdd189371"
+    pullPolicy: IfNotPresent
 
 config:
   core:
