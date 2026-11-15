@@ -62,7 +62,7 @@ jobs:
             -schema-location default \
             -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
             platform/k8s projects platform/argocd/apps platform/argocd/projects \
-            envs/local/secret-store envs/oracle/secret-store envs/oracle/backup envs/oracle/ops \
+            envs/local/secret-store envs/oracle/secret-store envs/oracle/backup envs/oracle/ops envs/oracle/lakefs-gc \
             envs/local/ingress envs/oracle/ingress /tmp/local.yaml /tmp/oracle.yaml
       - name: terraform (fmt + validate, no backend)
         working-directory: terraform/oracle

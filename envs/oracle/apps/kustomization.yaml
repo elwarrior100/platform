@@ -9,6 +9,7 @@ resources:
   - ingress.yaml
   - backup.yaml
   - ops.yaml
+  - lakefs-gc.yaml
 patches:
   - target: {kind: Application, labelSelector: "platform/git-source=true"}
     patch: |-

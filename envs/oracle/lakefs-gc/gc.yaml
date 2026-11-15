@@ -1,4 +1,4 @@
-# lakeFS garbage collection (ADR-015), weekly on Sundays 05:00 UTC (after the boot volume backup and the restore drill).
+# lakeFS garbage collection (ADR-015), Oracle only, weekly on Sundays 05:00 UTC (after the boot volume backup and the restore drill).
 # Deleting files on main (e.g. the 15-day bronze retention) frees no space by itself: older commits still point at
 # them. This Spark job (Community GC, lakeFS Spark client 0.22.0) removes the objects that no branch head and no commit
 # of the last 15 days refers to (rules: scripts/lakefs-repo.sh).
@@ -7,6 +7,8 @@
 # <storage namespace>/_lakefs/retention/gc/unified/<mark id>/ and deletes nothing. Switch to "true" only after reading a
 # report (docs/runbook.md, "lakeFS garbage collection").
 #
+# Not on the local cluster: its lake history lost metaranges in the 2026-11-09/11 storage incidents (ADR-008), and
+# GC must read every commit, so it can never complete there.
 # Runs in the data namespace, where the lakeFS and SeaweedFS keys already are; that namespace cannot leave the cluster
 # (egress: DNS and its own pods), so the jars are baked into the image (images/lakefs-gc), never downloaded here.
 # The keys reach Spark through a properties file written at start, not on the command line.
