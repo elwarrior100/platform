@@ -7,14 +7,36 @@ on:
   push:
     branches: [main]
     paths: [images/**, .github/workflows/images.yml]
+  schedule:
+    - cron: "23 6 * * 1"     # Mondays: re-scan what is DEPLOYED (new CVEs; expired entries in .trivyignore)
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
+  # Weekly: scan the image tag the cluster actually runs (read from the manifest), so a new CRITICAL CVE, or an
+  # accepted one whose .trivyignore entry expired, fails CI even when nobody touches images/.
+  rescan-deployed:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: deployed lakefs-gc image
+        id: ref
+        run: echo "image=$(grep -o 'ghcr.io/[^ ]*lakefs-gc:[0-9a-f@:sha]*' envs/oracle/lakefs-gc/gc.yaml | head -1)" >> "$GITHUB_OUTPUT"
+      - name: scan (fails on CRITICAL vulnerabilities that have a fix)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ steps.ref.outputs.image }}
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+          trivyignores: images/lakefs-gc/.trivyignore
+
   image:
     name: image (${{ matrix.image }})
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-24.04-arm
     permissions:
       contents: read

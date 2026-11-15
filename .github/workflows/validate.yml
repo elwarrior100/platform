@@ -49,6 +49,12 @@ jobs:
             p=$(awk '/^  project:/ {print $2}' envs/$env/root-app.yaml)
             grep -q "projects/$p.yaml" scripts/install-argocd.sh || { echo "root ($env) is in project $p, which install-argocd.sh does not create"; exit 1; }
           done
+      - name: lakeFS GC keeps history at least as long as the database dumps live (else an older dump points at swept objects)
+        run: |
+          gc=$(grep -o '"default_retention_days":[0-9]*' scripts/lakefs-repo.sh | head -1 | cut -d: -f2)
+          dumps=$(awk '/resource "oci_objectstorage_object_lifecycle_policy" "backups"/,/^}/' terraform/oracle/backups.tf | grep -o 'time_amount *= *[0-9]*' | grep -o '[0-9]*$')
+          echo "GC retention: $gc days, dump lifecycle: $dumps days"
+          [ -n "$gc" ] && [ -n "$dumps" ] && [ "$gc" -ge "$dumps" ] || { echo "GC retention must be >= the dump lifecycle"; exit 1; }
       - name: secrets (gitleaks, full history)
         run: gitleaks git . --no-banner --redact
       - name: kustomize (both environments)
