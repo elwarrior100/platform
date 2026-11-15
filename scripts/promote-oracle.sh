@@ -7,7 +7,8 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 REF="${1:-main}"
 git fetch -q origin
-SHA="$(git rev-parse "origin/$REF" 2>/dev/null || git rev-parse "$REF")"
+# a branch name resolves on origin; a commit SHA resolves as itself (--verify: no output when it does not resolve)
+SHA="$(git rev-parse -q --verify "origin/$REF^{commit}" || git rev-parse --verify "$REF^{commit}")"
 git merge-base --is-ancestor origin/oracle "$SHA" || { echo "refused: $SHA is not ahead of oracle (not a fast-forward)" >&2; exit 1; }
 echo "oracle: $(git rev-parse --short origin/oracle) -> $(git rev-parse --short "$SHA")"
 git log --oneline "origin/oracle..$SHA"
