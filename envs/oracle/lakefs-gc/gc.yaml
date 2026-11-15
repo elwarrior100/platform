@@ -32,6 +32,8 @@ spec:
           labels: {app: lakefs-gc}
         spec:
           restartPolicy: Never
+          priorityClassName: platform-batch     # evicted first under memory pressure; never preempts anything
+          automountServiceAccountToken: false   # it never talks to the Kubernetes API
           securityContext:
             runAsNonRoot: true
             runAsUser: 185
@@ -56,7 +58,7 @@ spec:
                   umask 077
                   cat > /tmp/gc.properties <<EOF
                   spark.master=local[2]
-                  spark.driver.memory=1g
+                  spark.driver.memory=768m
                   spark.local.dir=/tmp/spark
                   spark.ui.enabled=false
                   spark.driver.bindAddress=127.0.0.1
@@ -88,5 +90,5 @@ spec:
                 readOnlyRootFilesystem: true
                 capabilities: {drop: [ALL]}
               resources:
-                requests: {cpu: 200m, memory: 1536Mi, ephemeral-storage: 256Mi}
-                limits: {memory: 2Gi, ephemeral-storage: 3Gi}
+                requests: {cpu: 100m, memory: 1Gi, ephemeral-storage: 256Mi}
+                limits: {cpu: "1", memory: 1536Mi, ephemeral-storage: 3Gi}   # 768m heap + Spark/JVM overhead
