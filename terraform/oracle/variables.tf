@@ -66,3 +66,8 @@ variable "alert_email" {
   description = "Where OCI alarms are emailed (set in terraform.tfvars, not in git)"
   type        = string
 }
+
+variable "budget_ocid" {
+  description = "The tenancy's existing budget (created in the console as \"Alertmax\"; one budget per compartment), imported in budget.tf"
+  type        = string
+}
