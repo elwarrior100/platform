@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Prepares the Oracle VM (Always Free A1: 2 OCPU / 12 GB) and installs k3s. Idempotent.
 # Run from the Mac, over Tailscale:  ./envs/oracle/bootstrap-vm.sh
+# Then, for the HTTPS names of the web UIs: ./envs/oracle/tailscale-services.sh (Tailscale Services, docs/runbook.md).
 # Afterwards the kubeconfig is at ~/.kube/oracle.yaml, pointing at https://platform-oracle:6443 (Tailscale only:
 # the VM has no inbound port open to the internet, see terraform/oracle/network.tf).
 set -euo pipefail

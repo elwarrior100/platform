@@ -122,3 +122,10 @@ KUBECONFIG=~/.kube/oracle.yaml ./scripts/lake-backup-prune.sh --apply    # asks 
 Only objects missing from the lake for 30 days (counted from the first run that saw them missing, kept in
 `_prune/missing.json`) go, so an object lost to corruption keeps its copy. Forgetting it is not dangerous,
 only costly: the `storage_high` alarm (12 GB on the copy) is the reminder.
+
+## HTTPS names (Tailscale Services on the VM)
+`https://<airflow|grafana|argocd|lakefs|openmetadata>.taila669aa.ts.net`: one Tailscale Service per UI, served by the
+VM (tagged `tag:platform`) with a Let's Encrypt certificate and handed to Traefik on 127.0.0.1:80; the Ingresses also
+answer these names. Check or (re)configure: `./envs/oracle/tailscale-services.sh [--check]`. A rebuilt VM needs it
+run once (after bootstrap-vm.sh and re-tagging the machine `tag:platform` in the console). The sslip.io names and
+`ui.sh` remain the fallback. No Kubernetes operator on purpose: its proxies run privileged (ADR-014).
