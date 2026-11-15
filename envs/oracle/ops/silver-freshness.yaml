@@ -55,3 +55,5 @@ spec:
                     echo "silver is stale: no heartbeat (the OCI alarm will fire after 3 h without one)"
                   fi
               resources: {requests: {cpu: 20m, memory: 64Mi}, limits: {memory: 256Mi}}
+              securityContext: {runAsUser: 1000, allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+          securityContext: {runAsNonRoot: true, seccompProfile: {type: RuntimeDefault}}

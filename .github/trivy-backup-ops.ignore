@@ -1,0 +1,5 @@
+# backup and ops hold the VM's instance principal and the lakeFS/Postgres keys, so CI fails on any HIGH finding there,
+# except this one: a read-only root filesystem needs per-image writable paths (OCI CLI cache, Postgres socket, lakeFS
+# home) and is the next hardening step (docs/PLAN.md). Everything else (non-root, no capabilities, no privilege
+# escalation, seccomp) is enforced.
+AVD-KSV-0014
