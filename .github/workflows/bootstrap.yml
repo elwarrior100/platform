@@ -1,0 +1,55 @@
+# Proves a FRESH cluster can be bootstrapped exactly as README.md says (the 6th review found it could not: the root
+# application's project was only created by the root application itself). On a throw-away kind cluster:
+# install-argocd.sh, then the root application; passes when root syncs and every application in envs/local/apps
+# exists. It does not wait for the applications themselves to become healthy (no vault, no data here): it tests
+# the bootstrap order and the app-of-apps, not the workloads. Runs when that path changes, weekly, and by hand.
+name: bootstrap
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - platform/argocd/**
+      - envs/*/root-app.yaml
+      - envs/*/apps/**
+      - scripts/install-argocd.sh
+      - .github/workflows/bootstrap.yml
+  schedule:
+    - cron: "41 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fresh-cluster:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 25
+    env:
+      KUBECONFIG: /home/runner/.kube/config
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
+      - uses: helm/kind-action@1544676c07bb3570fcb70166beaa07c4528fd4aa # v1.15.1
+        with:
+          cluster_name: bootstrap
+      - name: 1. install Argo CD (as on a new cluster)
+        run: ./scripts/install-argocd.sh
+      - name: 2. apply the root application
+        run: kubectl apply -f envs/local/root-app.yaml
+      - name: 3. root syncs and creates every application
+        run: |
+          want=$(kubectl kustomize envs/local/apps | grep -c '^kind: Application$')
+          for i in $(seq 1 60); do
+            sync=$(kubectl -n argocd get app root -o jsonpath='{.status.sync.status}' 2>/dev/null || true)
+            have=$(kubectl -n argocd get applications --no-headers 2>/dev/null | grep -vc '^root ' || true)
+            echo "root: ${sync:-?}, applications: $have of $want"
+            [ "$sync" = Synced ] && [ "$have" -ge "$want" ] && break
+            sleep 10
+          done
+          kubectl -n argocd get appprojects
+          kubectl -n argocd get applications -o custom-columns=NAME:.metadata.name,PROJECT:.spec.project,SYNC:.status.sync.status
+          kubectl -n argocd get app root -o jsonpath='{range .status.conditions[*]}{.type}: {.message}{"\n"}{end}'
+          [ "$sync" = Synced ] && [ "$have" -ge "$want" ] || { echo "FAIL: a fresh cluster does not bootstrap"; exit 1; }
+          for p in bootstrap platform modbus default; do kubectl -n argocd get appproject "$p" >/dev/null; done
+          echo "OK: fresh bootstrap works ($have applications, root Synced)"
