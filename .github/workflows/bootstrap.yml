@@ -1,8 +1,9 @@
 # Proves a FRESH cluster can be bootstrapped exactly as README.md says (the 6th review found it could not: the root
-# application's project was only created by the root application itself). On a throw-away kind cluster:
-# install-argocd.sh, then the root application; passes when root syncs and every application in envs/local/apps
-# exists. It does not wait for the applications themselves to become healthy (no vault, no data here): it tests
-# the bootstrap order and the app-of-apps, not the workloads. Runs when that path changes, weekly, and by hand.
+# application's project was only created by the root application itself). For BOTH environments, on a throw-away
+# kind cluster: install-argocd.sh, then that environment's root application pointed at the commit under test; passes
+# when root syncs, every application of envs/<env>/apps exists, and none has an InvalidSpecError (a wrong project,
+# destination or permission). It does not wait for workloads to become healthy (no vault, no data here): it tests the
+# bootstrap order and the app-of-apps. Runs when that path changes, weekly, and by hand.
 name: bootstrap
 
 on:
@@ -23,6 +24,11 @@ permissions:
 
 jobs:
   fresh-cluster:
+    name: fresh cluster (${{ matrix.env }})
+    strategy:
+      fail-fast: false
+      matrix:
+        env: [local, oracle]
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 25
     env:
@@ -35,11 +41,11 @@ jobs:
           cluster_name: bootstrap
       - name: 1. install Argo CD (as on a new cluster)
         run: ./scripts/install-argocd.sh
-      - name: 2. apply the root application
-        run: kubectl apply -f envs/local/root-app.yaml
+      - name: 2. apply the root application (at the commit under test)
+        run: sed "s|targetRevision: .*|targetRevision: ${{ github.sha }}|" envs/${{ matrix.env }}/root-app.yaml | kubectl apply -f -
       - name: 3. root syncs and creates every application
         run: |
-          want=$(kubectl kustomize envs/local/apps | grep -c '^kind: Application$')
+          want=$(kubectl kustomize envs/${{ matrix.env }}/apps | grep -c '^kind: Application$')
           for i in $(seq 1 60); do
             sync=$(kubectl -n argocd get app root -o jsonpath='{.status.sync.status}' 2>/dev/null || true)
             have=$(kubectl -n argocd get applications --no-headers 2>/dev/null | grep -vc '^root ' || true)
@@ -51,5 +57,13 @@ jobs:
           kubectl -n argocd get applications -o custom-columns=NAME:.metadata.name,PROJECT:.spec.project,SYNC:.status.sync.status
           kubectl -n argocd get app root -o jsonpath='{range .status.conditions[*]}{.type}: {.message}{"\n"}{end}'
           [ "$sync" = Synced ] && [ "$have" -ge "$want" ] || { echo "FAIL: a fresh cluster does not bootstrap"; exit 1; }
+          sleep 60   # give every application one reconciliation, then look for spec errors (wrong project/destination)
+          bad=$(kubectl -n argocd get applications -o json | python3 -c '
+          import json, sys
+          for a in json.load(sys.stdin)["items"]:
+              for c in a.get("status", {}).get("conditions") or []:
+                  if c["type"] == "InvalidSpecError":
+                      print(a["metadata"]["name"] + ": " + c["message"])')
+          [ -z "$bad" ] || { echo "FAIL: applications with an invalid spec:"; echo "$bad"; exit 1; }
           for p in bootstrap platform modbus default; do kubectl -n argocd get appproject "$p" >/dev/null; done
           echo "OK: fresh bootstrap works ($have applications, root Synced)"
