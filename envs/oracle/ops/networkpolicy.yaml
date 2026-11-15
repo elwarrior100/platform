@@ -31,6 +31,9 @@ spec:
     - to:   # lakeFS API
         - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: data}}
       ports: [{port: 8000, protocol: TCP}]
+    - to:   # the Kubernetes API (the node itself, 10.0.0.43:6443): gc-freshness reads the lakefs-gc Jobs, nothing else
+        - ipBlock: {cidr: 10.0.0.43/32}
+      ports: [{port: 6443, protocol: TCP}]
 ---
 # ops: nothing connects in (the restore drill's scratch services listen on the pod, for its own containers only)
 apiVersion: networking.k8s.io/v1

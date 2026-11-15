@@ -148,6 +148,36 @@ resource "oci_monitoring_alarm" "lake_drill_missing" {
   repeat_notification_duration = "PT24H"
 }
 
+# lakeFS GC heartbeat (envs/oracle/ops/gc-freshness.yaml, daily): 0 = no successful GC in 8 days; nothing = the check
+# itself did not run. Without GC the lake grows until storage_high fires, weeks later.
+resource "oci_monitoring_alarm" "lake_gc_failed" {
+  compartment_id               = var.compartment_id
+  metric_compartment_id        = var.compartment_id
+  display_name                 = "platform: lakeFS GC has not succeeded in 8 days"
+  namespace                    = "platform_backup"
+  query                        = "lake_gc_success[1h].min() < 1"
+  severity                     = "WARNING"
+  pending_duration             = "PT1M"
+  is_enabled                   = true
+  destinations                 = [oci_ons_notification_topic.alerts.id]
+  body                         = "No lakefs-gc Job succeeded in the last 8 days. Check: kubectl -n data get jobs; logs of the latest lakefs-gc job."
+  repeat_notification_duration = "PT24H"
+}
+
+resource "oci_monitoring_alarm" "lake_gc_check_missing" {
+  compartment_id               = var.compartment_id
+  metric_compartment_id        = var.compartment_id
+  display_name                 = "platform: lakeFS GC check not running"
+  namespace                    = "platform_backup"
+  query                        = "lake_gc_success[1h].absent(2d)"
+  severity                     = "WARNING"
+  pending_duration             = "PT5M"
+  is_enabled                   = true
+  destinations                 = [oci_ons_notification_topic.alerts.id]
+  body                         = "The daily GC check (ops/gc-freshness) posted nothing for 2 days. Check: kubectl -n ops get jobs."
+  repeat_notification_duration = "PT24H"
+}
+
 # Always Free gives 20 GB of Object Storage in total; warn well before the dumps and the lake copy reach it.
 resource "oci_monitoring_alarm" "storage_high" {
   for_each              = { lake = { bucket = oci_objectstorage_bucket.lake.name, gb = 12 }, dumps = { bucket = oci_objectstorage_bucket.backups.name, gb = 5 } }

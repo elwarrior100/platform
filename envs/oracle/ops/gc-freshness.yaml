@@ -1,0 +1,87 @@
+# Heartbeat for the weekly lakeFS GC (ADR-015). The GC runs in the data namespace, which by design cannot reach OCI,
+# so it cannot post a metric itself. Every day at 06:00 UTC this job asks the Kubernetes API "did a lakefs-gc Job
+# succeed in the last 8 days?" and posts lake_gc_success = 1 or 0 (OCI alarms: a 0, or nothing for 2 days).
+# Permissions: read Jobs in data, nothing else (Role + RoleBinding below); its egress adds only the API server.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: gc-checker
+  namespace: ops
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: read-jobs
+  namespace: data
+rules:
+  - apiGroups: [batch]
+    resources: [jobs]
+    verbs: [get, list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: gc-checker-reads-jobs
+  namespace: data
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: read-jobs}
+subjects:
+  - {kind: ServiceAccount, name: gc-checker, namespace: ops}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: gc-freshness
+  namespace: ops
+spec:
+  schedule: "0 6 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      ttlSecondsAfterFinished: 86400
+      template:
+        metadata:
+          labels: {app: gc-freshness}
+        spec:
+          restartPolicy: Never
+          serviceAccountName: gc-checker
+          securityContext: {runAsNonRoot: true, seccompProfile: {type: RuntimeDefault}}
+          containers:
+            - name: check
+              image: ghcr.io/oracle/oci-cli:latest@sha256:2127c2f50ee1353fa78cbf538ab91ffaccc0d02b6d0b4144530cef6ee69709f5
+              env: [{name: OCI_CLI_AUTH, value: instance_principal}]
+              command: [sh, -ec]
+              args:
+                - |
+                  VALUE=$(python3 - <<'PY'
+                  import datetime, json, ssl, time, urllib.request
+                  sa = "/var/run/secrets/kubernetes.io/serviceaccount"
+                  ctx = ssl.create_default_context(cafile=sa + "/ca.crt")
+                  req = urllib.request.Request("https://kubernetes.default.svc/apis/batch/v1/namespaces/data/jobs",
+                                               headers={"Authorization": "Bearer " + open(sa + "/token").read()})
+                  for attempt in range(30):   # network policies reach a new pod a few seconds after it starts
+                      try:
+                          jobs = json.load(urllib.request.urlopen(req, context=ctx, timeout=10))["items"]; break
+                      except OSError:
+                          time.sleep(2)
+                  else:
+                      raise SystemExit("Kubernetes API unreachable")
+                  cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=8)
+                  ok = [j for j in jobs
+                        if (j["spec"]["template"]["metadata"].get("labels") or {}).get("app") == "lakefs-gc"
+                        and j["status"].get("succeeded") and j["status"].get("completionTime")
+                        and datetime.datetime.fromisoformat(j["status"]["completionTime"].replace("Z", "+00:00")) > cutoff]
+                  import sys
+                  print("lakefs-gc jobs that succeeded in the last 8 days:", [j["metadata"]["name"] for j in ok], file=sys.stderr)
+                  print(1 if ok else 0)
+                  PY
+                  )
+                  MD=$(python3 -c 'import json,urllib.request; d=json.load(urllib.request.urlopen(urllib.request.Request("http://169.254.169.254/opc/v2/instance/", headers={"Authorization": "Bearer Oracle"}))); print(d["compartmentId"], d["canonicalRegionName"])')
+                  COMP=${MD% *}; REGION=${MD#* }
+                  oci monitoring metric-data post --endpoint "https://telemetry-ingestion.$REGION.oraclecloud.com" \
+                    --metric-data "[{\"namespace\":\"platform_backup\",\"compartmentId\":\"$COMP\",\"name\":\"lake_gc_success\",\"dimensions\":{\"cluster\":\"oracle\"},\"datapoints\":[{\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"value\":$VALUE}]}]" >/dev/null
+                  echo "heartbeat posted (lake_gc_success=$VALUE)"
+              securityContext: {runAsUser: 1000, allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+              resources: {requests: {cpu: 20m, memory: 64Mi}, limits: {memory: 256Mi}}
