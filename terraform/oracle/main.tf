@@ -31,6 +31,8 @@ resource "oci_core_instance" "platform" {
   create_vnic_details {
     subnet_id        = var.subnet_id
     assign_public_ip = true
+    # pinned: the ops/gc-freshness network policy allows the Kubernetes API at exactly this address
+    private_ip = "10.0.0.43"
   }
 
   metadata = {

@@ -136,6 +136,7 @@ read a report. Heartbeat: `ops/gc-freshness` posts `lake_gc_success` daily (alar
 1. Read the report: `kubectl -n data logs job/<latest lakefs-gc job> | grep 'Report summary'`
    (`run_id` = the mark id, `num_deleted_objects` = how many it would delete).
 2. First real deletion, of exactly that list: `KUBECONFIG=~/.kube/oracle.yaml ./scripts/lakefs-gc-sweep.sh <mark id>`.
+   It refuses a mark older than 48 h, prints the marked objects (read-only key) and asks you to type `sweep`.
 3. Once that went well, set `GC_SWEEP: "true"` in `envs/oracle/lakefs-gc/gc.yaml` (weekly mark and sweep).
 GC retention (15 days, `scripts/lakefs-repo.sh`) must stay >= the dump lifecycle (14 days): CI checks it.
 

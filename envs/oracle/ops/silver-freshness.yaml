@@ -20,6 +20,7 @@ spec:
           labels: {app: silver-freshness}
         spec:
           restartPolicy: Never
+          automountServiceAccountToken: false   # it never talks to the Kubernetes API
           containers:
             - name: check
               image: ghcr.io/oracle/oci-cli:latest@sha256:2127c2f50ee1353fa78cbf538ab91ffaccc0d02b6d0b4144530cef6ee69709f5

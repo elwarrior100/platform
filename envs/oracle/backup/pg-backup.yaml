@@ -29,6 +29,7 @@ spec:
                                                  # metadata endpoint (instance principal): see network-policies
         spec:
           restartPolicy: Never
+          automountServiceAccountToken: false   # it never talks to the Kubernetes API
           volumes:
             - {name: dump, emptyDir: {}}
             - {name: tmp, emptyDir: {sizeLimit: 512Mi}}

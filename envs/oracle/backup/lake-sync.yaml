@@ -21,6 +21,7 @@ spec:
           labels: {app: lake-sync}
         spec:
           restartPolicy: Never
+          automountServiceAccountToken: false   # it never talks to the Kubernetes API
           volumes: [{name: cfg, emptyDir: {}}, {name: tmp, emptyDir: {sizeLimit: 512Mi}}]
           initContainers:
             # the Object Storage namespace and the bucket's compartment are looked up with the instance principal,
