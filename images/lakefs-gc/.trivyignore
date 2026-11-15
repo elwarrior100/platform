@@ -1,0 +1,8 @@
+# Accepted CRITICAL findings of the lakefs-gc image (ADR-015), each until a date: then CI fails again and it is re-read.
+# They sit inside jars the GC needs and cannot be swapped without rebuilding them (netty shaded into the lakeFS client
+# and the AWS SDK, avro shaded into hadoop-client-runtime; Spark's own netty-handler is the same version family).
+# Why acceptable: the pod has no internet egress (data namespace: DNS and its own pods), accepts no inbound
+# connections (NetworkPolicy lakefs-gc-no-ingress), binds Spark to 127.0.0.1, runs as non-root with a read-only root
+# filesystem, reads only this lake's own files, and lives a few minutes a week.
+CVE-2026-75595 exp:2027-02-15
+CVE-2024-47561 exp:2027-02-15
