@@ -6,7 +6,8 @@ FROM apache/spark:3.5.9-scala2.12-java17-ubuntu@sha256:5eb9236efcfee5e447d6fe30c
 
 # Parts of Spark the GC never uses (Hive's embedded metastore, cluster coordination): removed, with their CVEs.
 USER root
-RUN rm -f /opt/spark/jars/derby-*.jar /opt/spark/jars/zookeeper-*.jar
+RUN rm -f /opt/spark/jars/derby-*.jar /opt/spark/jars/zookeeper-*.jar \
+ && install -d -m 0755 /opt/gc   # created first: ADD --chmod would also give a new parent directory 0644 (not traversable)
 
 # S3A for Hadoop 3.3.4 (the Hadoop of this Spark build); checksums match Maven Central's .sha1 files
 ADD --checksum=sha256:53f9ae03c681a30a50aa17524bd9790ab596b28481858e54efd989a826ed3a4a --chmod=0644 \
