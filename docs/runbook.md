@@ -129,3 +129,17 @@ VM (tagged `tag:platform`) with a Let's Encrypt certificate and handed to Traefi
 answer these names. Check or (re)configure: `./envs/oracle/tailscale-services.sh [--check]`. A rebuilt VM needs it
 run once (after bootstrap-vm.sh and re-tagging the machine `tag:platform` in the console). The sslip.io names and
 `ui.sh` remain the fallback. No Kubernetes operator on purpose: its proxies run privileged (ADR-014).
+
+## lakeFS garbage collection
+Weekly CronJob `data/lakefs-gc` (Sundays 05:00 UTC, Oracle only), mark only (`GC_SWEEP=false`) until a person has
+read a report. Heartbeat: `ops/gc-freshness` posts `lake_gc_success` daily (alarms: 0, or nothing for 2 days).
+1. Read the report: `kubectl -n data logs job/<latest lakefs-gc job> | grep 'Report summary'`
+   (`run_id` = the mark id, `num_deleted_objects` = how many it would delete).
+2. First real deletion, of exactly that list: `KUBECONFIG=~/.kube/oracle.yaml ./scripts/lakefs-gc-sweep.sh <mark id>`.
+3. Once that went well, set `GC_SWEEP: "true"` in `envs/oracle/lakefs-gc/gc.yaml` (weekly mark and sweep).
+GC retention (15 days, `scripts/lakefs-repo.sh`) must stay >= the dump lifecycle (14 days): CI checks it.
+
+## CPU and memory headroom (2 OCPU, 12 GB)
+The kubelet reserves 250m CPU and 768Mi for k3s and the OS (`kubelet.conf.d/98-reserved.conf`, bootstrap-vm.sh):
+pods see 1.75 CPU. Requests follow measured use (`kubectl top pods -A`); heavy JVMs (OpenMetadata, OpenSearch) and
+Prometheus have CPU limits. Re-runnable batch jobs (GC, drill) use PriorityClass `platform-batch`: evicted first.
