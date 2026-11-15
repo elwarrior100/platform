@@ -5,3 +5,8 @@ resources:
   - default.yaml
   - platform.yaml
   - modbus.yaml
+# Projects first (wave -1), before any application that references them (wave 0 and later). Without this a FRESH
+# cluster created argocd, external-secrets and namespaces before the platform project existed, and Argo CD marked them
+# InvalidSpecError until its next retry minutes later (found by .github/workflows/bootstrap.yml).
+commonAnnotations:
+  argocd.argoproj.io/sync-wave: "-1"
