@@ -29,5 +29,8 @@ openmetadata:
 # It had no requests or limits at all. CPU capped at 1 so a restart (JVM warm-up) cannot starve k3s on 2 OCPU
 # (2026-11-15 incident); memory from its measured use (~1.1Gi).
 resources:
-  requests: {cpu: 100m, memory: 1Gi}
-  limits: {cpu: "1", memory: 2Gi}
+  requests: {cpu: 100m, memory: 900Mi}
+  limits: {cpu: "1", memory: 1400Mi}
+# JVM heap 768m instead of the image's 1G default (2026-11-15): the defaults are sized for enterprise catalogs.
+extraEnvs:
+  - {name: OPENMETADATA_HEAP_OPTS, value: "-Xmx768m -Xms768m"}
