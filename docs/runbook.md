@@ -111,3 +111,13 @@ OpenMetadata, Prometheus, Grafana and Argo CD together: load reached 14, k3s' ow
 k3s exited ("Transaction commit failed"); systemd restarted it and everything recovered in ~5 min, data intact.
 For changes that restart several heavy workloads, promote one application at a time (or refresh them one by one) and
 wait for the load (`uptime` on the VM) to fall below ~3 before the next.
+
+## Monthly: prune the lake copy (a person, from the Mac)
+The VM can never delete from `platform-lake-backup` (that is what makes the copy tamper-proof), so once lakeFS GC
+removes objects from the lake, their copies stay until a person prunes them:
+```
+KUBECONFIG=~/.kube/oracle.yaml ./scripts/lake-backup-prune.sh            # dry run: what would go
+KUBECONFIG=~/.kube/oracle.yaml ./scripts/lake-backup-prune.sh --apply    # asks you to type the count
+```
+Only objects that are no longer in the lake AND were copied more than 30 days ago go. Forgetting it is not dangerous,
+only costly: the `storage_high` alarm (12 GB on the copy) is the reminder.
