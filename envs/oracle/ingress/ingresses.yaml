@@ -1,11 +1,13 @@
 # Web UIs through the k3s ingress controller (Traefik), so no tunnel is needed.
 # Oracle: the Tailscale IP of the VM. sslip.io answers <anything>.100.108.9.15.sslip.io with 100.108.9.15, a private
 # tailnet address, so only devices on your tailnet can open these URLs. The OCI firewall keeps port 80 closed to the internet.
-# HTTP only: on Oracle the traffic is already encrypted end to end by Tailscale (WireGuard). SeaweedFS has no login and
+# Each Ingress also answers <service>.taila669aa.ts.net: the HTTPS name a Tailscale Service on the VM serves with a valid
+# certificate and hands to Traefik on 127.0.0.1:80, keeping the Host header (envs/oracle/tailscale-services.sh; the
+# sslip.io names stay as the fallback). HTTP inside: the traffic is already encrypted end to end by Tailscale. SeaweedFS has no login and
 # is deliberately not published. scripts/ui.sh (port-forward tunnels) is the fallback;
 # SeaweedFS is reached only with kubectl exec + weed shell (docs/runbook.md).
 ---
-# Airflow: http://airflow.100.108.9.15.sslip.io
+# Airflow: https://airflow.taila669aa.ts.net (fallback http://airflow.100.108.9.15.sslip.io)
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -21,8 +23,15 @@ spec:
             pathType: Prefix
             backend:
               service: {name: airflow-api-server, port: {number: 8080}}
+    - host: airflow.taila669aa.ts.net
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: {name: airflow-api-server, port: {number: 8080}}
 ---
-# Grafana: http://grafana.100.108.9.15.sslip.io
+# Grafana: https://grafana.taila669aa.ts.net (fallback http://grafana.100.108.9.15.sslip.io)
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -38,8 +47,15 @@ spec:
             pathType: Prefix
             backend:
               service: {name: monitoring-grafana, port: {number: 80}}
+    - host: grafana.taila669aa.ts.net
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: {name: monitoring-grafana, port: {number: 80}}
 ---
-# Argo CD: http://argocd.100.108.9.15.sslip.io
+# Argo CD: https://argocd.taila669aa.ts.net (fallback http://argocd.100.108.9.15.sslip.io)
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -55,8 +71,15 @@ spec:
             pathType: Prefix
             backend:
               service: {name: argocd-server, port: {number: 80}}
+    - host: argocd.taila669aa.ts.net
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: {name: argocd-server, port: {number: 80}}
 ---
-# lakeFS: http://lakefs.100.108.9.15.sslip.io
+# lakeFS: https://lakefs.taila669aa.ts.net (fallback http://lakefs.100.108.9.15.sslip.io)
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -72,8 +95,15 @@ spec:
             pathType: Prefix
             backend:
               service: {name: lakefs, port: {number: 8000}}
+    - host: lakefs.taila669aa.ts.net
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: {name: lakefs, port: {number: 8000}}
 ---
-# OpenMetadata: http://openmetadata.100.108.9.15.sslip.io
+# OpenMetadata: https://openmetadata.taila669aa.ts.net (fallback http://openmetadata.100.108.9.15.sslip.io)
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -83,6 +113,13 @@ spec:
   ingressClassName: traefik
   rules:
     - host: openmetadata.100.108.9.15.sslip.io
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: {name: openmetadata, port: {number: 8585}}
+    - host: openmetadata.taila669aa.ts.net
       http:
         paths:
           - path: /
