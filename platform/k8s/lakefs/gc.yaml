@@ -1,0 +1,90 @@
+# lakeFS garbage collection (ADR-015), weekly on Sundays 05:00 UTC (after the boot volume backup and the restore drill).
+# Deleting files on main (e.g. the 15-day bronze retention) frees no space by itself: older commits still point at
+# them. This Spark job (Community GC, lakeFS Spark client 0.22.0) removes the objects that no branch head and no commit
+# of the last 15 days refers to (rules: scripts/lakefs-repo.sh).
+#
+# GC_SWEEP=false: MARK ONLY. It writes the list of what it would delete under
+# <storage namespace>/_lakefs/retention/gc/unified/<mark id>/ and deletes nothing. Switch to "true" only after reading a
+# report (docs/runbook.md, "lakeFS garbage collection").
+#
+# Runs in the data namespace, where the lakeFS and SeaweedFS keys already are; that namespace cannot leave the cluster
+# (egress: DNS and its own pods), so the jars are baked into the image (images/lakefs-gc), never downloaded here.
+# The keys reach Spark through a properties file written at start, not on the command line.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: lakefs-gc
+  namespace: data
+spec:
+  schedule: "0 5 * * 0"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 3600
+      ttlSecondsAfterFinished: 604800       # keep a week: the job's log is the GC report
+      template:
+        metadata:
+          labels: {app: lakefs-gc}
+        spec:
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 185
+            runAsGroup: 185
+            fsGroup: 185
+            seccompProfile: {type: RuntimeDefault}
+          volumes:
+            - {name: tmp, emptyDir: {sizeLimit: 3Gi}}
+          containers:
+            - name: gc
+              image: ghcr.io/elwarrior100/lakefs-gc:9b6ecb8d4924b0a31d5103014ef53a077a15d4ab
+              env:
+                - {name: GC_SWEEP, value: "false"}
+                - {name: REPOSITORY, value: industrial-lake}
+                - {name: LAKEFS_ACCESS_KEY_ID, valueFrom: {secretKeyRef: {name: lakefs-auth, key: ADMIN_ACCESS_KEY_ID}}}
+                - {name: LAKEFS_SECRET_ACCESS_KEY, valueFrom: {secretKeyRef: {name: lakefs-auth, key: ADMIN_SECRET_ACCESS_KEY}}}
+                - {name: S3_ACCESS_KEY, valueFrom: {secretKeyRef: {name: seaweedfs-auth, key: S3_ACCESS_KEY}}}
+                - {name: S3_SECRET_KEY, valueFrom: {secretKeyRef: {name: seaweedfs-auth, key: S3_SECRET_KEY}}}
+              command: [bash, -ec]
+              args:
+                - |
+                  umask 077
+                  cat > /tmp/gc.properties <<EOF
+                  spark.master=local[2]
+                  spark.driver.memory=1g
+                  spark.local.dir=/tmp/spark
+                  spark.ui.enabled=false
+                  spark.driver.bindAddress=127.0.0.1
+                  spark.driver.host=127.0.0.1
+                  spark.hadoop.lakefs.api.url=http://lakefs.data.svc.cluster.local:8000/api/v1
+                  spark.hadoop.lakefs.api.access_key=$LAKEFS_ACCESS_KEY_ID
+                  spark.hadoop.lakefs.api.secret_key=$LAKEFS_SECRET_ACCESS_KEY
+                  spark.hadoop.lakefs.gc.do_sweep=$GC_SWEEP
+                  spark.hadoop.fs.s3a.access.key=$S3_ACCESS_KEY
+                  spark.hadoop.fs.s3a.secret.key=$S3_SECRET_KEY
+                  spark.hadoop.fs.s3a.endpoint=http://seaweedfs.data.svc.cluster.local:8333
+                  spark.hadoop.fs.s3a.path.style.access=true
+                  spark.hadoop.fs.s3a.connection.ssl.enabled=false
+                  spark.hadoop.fs.s3a.aws.credentials.provider=org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider
+                  spark.hadoop.fs.s3.impl=org.apache.hadoop.fs.s3a.S3AFileSystem
+                  spark.hadoop.fs.s3a.buffer.dir=/tmp/s3a
+                  EOF
+                  echo "lakeFS GC of $REPOSITORY, sweep=$GC_SWEEP"
+                  for i in $(seq 1 30); do   # network policies reach a new pod a few seconds after it starts
+                    (exec 3<>/dev/tcp/lakefs.data.svc.cluster.local/8000) 2>/dev/null && break; sleep 2
+                  done
+                  set -o pipefail   # the job fails when Spark fails; the filter only keeps the report readable
+                  /opt/spark/bin/spark-submit --properties-file /tmp/gc.properties \
+                    --class io.treeverse.gc.GarbageCollection /opt/gc/lakefs-gc.jar "$REPOSITORY" us-east-1 2>&1 \
+                    | { grep -E ' (WARN|ERROR) |treeverse|[Mm]ark|[Ss]weep|[Rr]eport|[Ee]xception|expired|deleted' || true; }
+              volumeMounts: [{name: tmp, mountPath: /tmp}]
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: [ALL]}
+              resources:
+                requests: {cpu: 200m, memory: 1536Mi, ephemeral-storage: 256Mi}
+                limits: {memory: 2Gi, ephemeral-storage: 3Gi}

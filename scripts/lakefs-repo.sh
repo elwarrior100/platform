@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Creates a project's lakeFS repository (and its SeaweedFS bucket) on a fresh cluster, and protects its main
-# branch. Idempotent.
+# Creates a project's lakeFS repository (and its SeaweedFS bucket) on a fresh cluster, protects its main branch and
+# sets its garbage collection rules. Idempotent.
 # Usage: ./scripts/lakefs-repo.sh <repository> <bucket>      e.g. industrial-lake lake
 #
 # Each project gets its own lakeFS repository (ADR-010). The project then installs its own hooks
@@ -67,4 +67,16 @@ else
   curl -sS --fail-with-body -K "$TMP/curl.cfg" -H 'Content-Type: application/json' -X PUT \
     "$API/repositories/$REPO/settings/branch_protection" -d '[{"pattern":"main"}]' >/dev/null
   echo "main of $REPO protected (merges only)"
+fi
+
+# 4. garbage collection rules (ADR-015): history stays readable for 15 days, the same as the raw bronze. The GC job
+#    (platform/k8s/lakefs/gc.yaml) then removes objects no branch head and no commit of the last 15 days refers to.
+want='{"default_retention_days":15,"branches":[]}'
+have=$(curl -s -K "$TMP/curl.cfg" "$API/repositories/$REPO/settings/gc_rules")
+if echo "$have" | grep -q '"default_retention_days":15' && ! echo "$have" | grep -q '"retention_days"'; then
+  echo "GC rules of $REPO already set (15 days)"
+else
+  curl -sS --fail-with-body -K "$TMP/curl.cfg" -H 'Content-Type: application/json' -X PUT \
+    "$API/repositories/$REPO/settings/gc_rules" -d "$want" >/dev/null
+  echo "GC rules of $REPO set: 15 days"
 fi

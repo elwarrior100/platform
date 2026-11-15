@@ -31,6 +31,18 @@ spec:
         - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: ingest}}     # the writer (bronze)
         - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: airflow}}    # silver tasks
         - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: ops}}        # freshness check
+        - podSelector: {matchLabels: {app: lakefs-gc}}                                # weekly garbage collection
         - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kube-system}}   # Traefik: the web UI
           podSelector: {matchLabels: {app.kubernetes.io/name: traefik}}
       ports: [{port: 8000, protocol: TCP}]
+
+---
+# The weekly lakeFS garbage collection accepts no connections at all (its image carries accepted CVEs: ADR-015).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: lakefs-gc-no-ingress
+  namespace: data
+spec:
+  podSelector: {matchLabels: {app: lakefs-gc}}
+  policyTypes: [Ingress]
