@@ -13,8 +13,8 @@ notifications:
 
 controller:
   resources:
-    requests: {cpu: 100m, memory: 256Mi}
-    limits: {memory: 768Mi}
+    requests: {cpu: 100m, memory: 512Mi}
+    limits: {memory: 1Gi}           # 768Mi: it idles at ~680Mi and was OOM-killed 3 times during a large sync (2026-11-15)
 server:
   resources:
     requests: {cpu: 50m, memory: 128Mi}

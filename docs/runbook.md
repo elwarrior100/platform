@@ -104,3 +104,10 @@ kubectl -n data exec -it seaweedfs-0 -- weed shell
 ```
 Read-only commands only. Anything that writes or deletes here (`fs.rm`, `volume.delete`...) bypasses lakeFS:
 restore from the backups instead (section "Restore the lake").
+
+## Large changes on Oracle: promote in small steps
+2 OCPU cannot restart many heavy pods at once. On 2026-11-15 pinning every chart image by digest restarted OpenSearch,
+OpenMetadata, Prometheus, Grafana and Argo CD together: load reached 14, k3s' own database (kine) became too slow and
+k3s exited ("Transaction commit failed"); systemd restarted it and everything recovered in ~5 min, data intact.
+For changes that restart several heavy workloads, promote one application at a time (or refresh them one by one) and
+wait for the load (`uptime` on the VM) to fall below ~3 before the next.
