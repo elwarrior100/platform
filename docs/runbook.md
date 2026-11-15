@@ -87,6 +87,13 @@ The backup and ops jobs may only reach the Oracle Services Network ranges of eu-
 `./scripts/check-oci-cidrs.sh` every Monday; if it fails (or the backup alarms fire with "connection timed out"),
 copy the `+` lines it prints into the `oci-osn-cidrs` block of both egress policies and promote.
 
+## A new project
+`./scripts/new-project.sh <project> <component> [component ...]` scaffolds it (nothing committed): its Argo CD project
+(only its namespaces), one namespace per component with the security labels, closed egress (DNS and itself), and
+`projects/<project>/k8s/<component>/` for the manifests, which the projects ApplicationSet picks up. It then lists the
+deliberate steps: secrets (vault + ClusterSecretStore conditions), opening the network it needs, the lakeFS
+repository, DAGs. Review `git diff`, commit, check the local cluster, promote.
+
 ## A new namespace
 Pods are refused until the namespace has the label `platform/network-reviewed` (admission rule
 network-reviewed-namespaces). First write its NetworkPolicies (at least `deny-cloud-metadata`, see
