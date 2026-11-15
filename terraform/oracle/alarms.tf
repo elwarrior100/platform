@@ -111,7 +111,7 @@ resource "oci_monitoring_alarm" "lake_sync_missing" {
   query                        = "lake_sync_success[1h].absent(26h)"
   severity                     = "CRITICAL"
   pending_duration             = "PT5M"
-  is_enabled                   = true
+  is_enabled                   = false # paused with the lake copy (2026-11-15, request budget)
   destinations                 = [oci_ons_notification_topic.alerts.id]
   body                         = "The nightly copy of the lake objects has not succeeded for 26 hours. Check: kubectl -n backup get jobs; logs of the latest lake-sync job."
   repeat_notification_duration = "PT12H"
@@ -126,7 +126,7 @@ resource "oci_monitoring_alarm" "lake_drill_failed" {
   query                        = "lake_drill_success[1h].min() < 1"
   severity                     = "CRITICAL"
   pending_duration             = "PT1M"
-  is_enabled                   = true
+  is_enabled                   = false # paused with the lake copy (2026-11-15, request budget)
   destinations                 = [oci_ons_notification_topic.alerts.id]
   body                         = "The lake restore drill ran and found objects missing or changed in the backup. Read: kubectl -n ops logs job/<latest lake-restore-drill job> -c check"
   repeat_notification_duration = "PT24H"
@@ -142,7 +142,7 @@ resource "oci_monitoring_alarm" "lake_drill_missing" {
   query                        = "lake_drill_success[1h].absent(2d)"
   severity                     = "WARNING"
   pending_duration             = "PT5M"
-  is_enabled                   = true
+  is_enabled                   = false # paused with the lake copy (2026-11-15, request budget)
   destinations                 = [oci_ons_notification_topic.alerts.id]
   body                         = "The daily lake restore drill (ops/lake-restore-drill, 04:15 UTC) has not passed for 2 days. Run ./scripts/lake-restore-test.sh and read its output."
   repeat_notification_duration = "PT24H"
