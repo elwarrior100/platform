@@ -78,14 +78,15 @@ resource "oci_objectstorage_object_lifecycle_policy" "lake" {
     target      = "multipart-uploads"
   }
   # One-off clean-up of the legacy object-by-object copy (ADR-016), done by Object Storage itself (not the VM, which
-  # still cannot delete): its objects were written on 2026-11-14/15, so 18 days lands on 2 to 3 December, inside a
-  # fresh monthly request budget. Only these legacy prefixes: bundles/ and catalog/ are never touched, and nothing
-  # writes to these prefixes any more. Remove this rule once the bucket holds only bundles/ and catalog/.
+  # still cannot delete). Brought forward to 1 day on 2026-11-16 at Stephane's request (he accepted that it may cost
+  # up to ~EUR 0.004 in November, whose free requests are used up). Only these legacy prefixes: bundles/ and catalog/
+  # are never touched, and nothing writes to these prefixes any more. Remove this rule once the bucket holds only
+  # bundles/ and catalog/.
   rules {
-    name        = "delete-legacy-object-copy-after-18-days"
+    name        = "delete-legacy-object-copy"
     action      = "DELETE"
     is_enabled  = true
-    time_amount = 18
+    time_amount = 1
     time_unit   = "DAYS"
     target      = "objects"
     object_name_filter {
