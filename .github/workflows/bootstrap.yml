@@ -42,7 +42,8 @@ jobs:
       - name: 1. install Argo CD (as on a new cluster)
         run: ./scripts/install-argocd.sh
       - name: 2. apply the root application (at the commit under test)
-        run: sed "s|targetRevision: .*|targetRevision: ${{ github.sha }}|" envs/${{ matrix.env }}/root-app.yaml | kubectl apply -f -
+        run: |
+          sed "s|targetRevision: .*|targetRevision: ${{ github.sha }}|" envs/${{ matrix.env }}/root-app.yaml | kubectl apply -f -
       - name: 3. root syncs and creates every application
         run: |
           want=$(kubectl kustomize envs/${{ matrix.env }}/apps | grep -c '^kind: Application$')
