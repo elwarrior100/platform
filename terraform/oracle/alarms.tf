@@ -117,8 +117,23 @@ resource "oci_monitoring_alarm" "lake_sync_missing" {
   repeat_notification_duration = "PT12H"
 }
 
-# Always Free gives 20 GB of Object Storage in total; warn well before the dumps and the lake copy reach it.
-# The daily lake restore drill posts lake_drill_success when every object checks out (envs/oracle/ops/lake-restore-drill.yaml).
+# The drill also posts lake_drill_success = 0 when its check fails: that alarms at once, not after two days.
+resource "oci_monitoring_alarm" "lake_drill_failed" {
+  compartment_id               = var.compartment_id
+  metric_compartment_id        = var.compartment_id
+  display_name                 = "platform: lake restore drill FAILED"
+  namespace                    = "platform_backup"
+  query                        = "lake_drill_success[1h].min() < 1"
+  severity                     = "CRITICAL"
+  pending_duration             = "PT1M"
+  is_enabled                   = true
+  destinations                 = [oci_ons_notification_topic.alerts.id]
+  body                         = "The lake restore drill ran and found objects missing or changed in the backup. Read: kubectl -n ops logs job/<latest lake-restore-drill job> -c check"
+  repeat_notification_duration = "PT24H"
+}
+
+# The daily lake restore drill posts lake_drill_success every run that reaches its check (envs/oracle/ops/lake-restore-drill.yaml):
+# nothing for 2 days means it did not even get that far.
 resource "oci_monitoring_alarm" "lake_drill_missing" {
   compartment_id               = var.compartment_id
   metric_compartment_id        = var.compartment_id
@@ -133,6 +148,7 @@ resource "oci_monitoring_alarm" "lake_drill_missing" {
   repeat_notification_duration = "PT24H"
 }
 
+# Always Free gives 20 GB of Object Storage in total; warn well before the dumps and the lake copy reach it.
 resource "oci_monitoring_alarm" "storage_high" {
   for_each              = { lake = { bucket = oci_objectstorage_bucket.lake.name, gb = 12 }, dumps = { bucket = oci_objectstorage_bucket.backups.name, gb = 5 } }
   compartment_id        = var.compartment_id

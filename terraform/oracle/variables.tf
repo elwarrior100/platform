@@ -30,6 +30,7 @@ variable "memory_in_gbs" {
   default = 12
 }
 
+# Always Free: 200 GB of boot + block volume storage in total (limit total-free-storage-gb of the tenancy).
 variable "boot_volume_size_in_gbs" {
   type    = number
   default = 100

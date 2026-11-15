@@ -14,6 +14,9 @@ images:
 config:
   core:
     parallelism: 2                # at most 2 task pods at once on the whole platform (2 OCPU on Oracle)
+    # A DAG that is in git runs: new DAGs start unpaused, so the two clusters cannot drift on a click in the UI (the
+    # local lake_housekeeping sat paused for days). To stop a DAG, change it in git (schedule=None), not the UI.
+    dags_are_paused_at_creation: "False"
   dag_processor:
     # One bundle per project. GitDagBundle (apache-airflow-providers-git, shipped in the official image) clones the
     # project repository and refreshes it every refresh_interval seconds: a pushed DAG shows up without a new image.
