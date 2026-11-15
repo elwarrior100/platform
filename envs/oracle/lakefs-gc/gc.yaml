@@ -3,9 +3,11 @@
 # them. This Spark job (Community GC, lakeFS Spark client 0.22.0) removes the objects that no branch head and no commit
 # of the last 15 days refers to (rules: scripts/lakefs-repo.sh).
 #
-# GC_SWEEP=false: MARK ONLY. It writes the list of what it would delete under
-# <storage namespace>/_lakefs/retention/gc/unified/<mark id>/ and deletes nothing. Switch to "true" only after reading a
-# report (docs/runbook.md, "lakeFS garbage collection").
+# Three modes (docs/runbook.md, "lakeFS garbage collection"):
+#   GC_SWEEP=false              MARK ONLY: writes what it would delete under
+#                               <storage namespace>/_lakefs/retention/gc/unified/<mark id>/ and deletes nothing
+#   GC_MARK_ID=<id> (one Job)   SWEEP ONLY that reviewed mark: deletes exactly the list a person read, nothing new
+#   GC_SWEEP=true               mark and sweep in one go (the weekly mode once the first reviewed sweep went well)
 #
 # Not on the local cluster: its lake history lost metaranges in the 2026-11-09/11 storage incidents (ADR-008), and
 # GC must read every commit, so it can never complete there.
@@ -47,6 +49,7 @@ spec:
               image: ghcr.io/elwarrior100/lakefs-gc:7d37e6c6dcd133a2d497dae8556ad238d12fa323
               env:
                 - {name: GC_SWEEP, value: "false"}
+                - {name: GC_MARK_ID, value: ""}     # set only on a one-off Job: sweep this reviewed mark, mark nothing
                 - {name: REPOSITORY, value: industrial-lake}
                 - {name: LAKEFS_ACCESS_KEY_ID, valueFrom: {secretKeyRef: {name: lakefs-auth, key: ADMIN_ACCESS_KEY_ID}}}
                 - {name: LAKEFS_SECRET_ACCESS_KEY, valueFrom: {secretKeyRef: {name: lakefs-auth, key: ADMIN_SECRET_ACCESS_KEY}}}
@@ -66,7 +69,14 @@ spec:
                   spark.hadoop.lakefs.api.url=http://lakefs.data.svc.cluster.local:8000/api/v1
                   spark.hadoop.lakefs.api.access_key=$LAKEFS_ACCESS_KEY_ID
                   spark.hadoop.lakefs.api.secret_key=$LAKEFS_SECRET_ACCESS_KEY
-                  spark.hadoop.lakefs.gc.do_sweep=$GC_SWEEP
+                  EOF
+                  if [ -n "$GC_MARK_ID" ]; then
+                    printf 'spark.hadoop.lakefs.gc.do_mark=false\nspark.hadoop.lakefs.gc.mark_id=%s\nspark.hadoop.lakefs.gc.do_sweep=true\n' "$GC_MARK_ID" >> /tmp/gc.properties
+                    GC_SWEEP="true (reviewed mark $GC_MARK_ID only)"
+                  else
+                    echo "spark.hadoop.lakefs.gc.do_sweep=$GC_SWEEP" >> /tmp/gc.properties
+                  fi
+                  cat >> /tmp/gc.properties <<EOF
                   spark.hadoop.fs.s3a.access.key=$S3_ACCESS_KEY
                   spark.hadoop.fs.s3a.secret.key=$S3_SECRET_KEY
                   spark.hadoop.fs.s3a.endpoint=http://seaweedfs.data.svc.cluster.local:8333
