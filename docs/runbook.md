@@ -126,8 +126,9 @@ only costly: the `storage_high` alarm (12 GB on the copy) is the reminder.
 ## HTTPS names (Tailscale Services on the VM)
 `https://<airflow|grafana|argocd|lakefs|openmetadata>.taila669aa.ts.net`: one Tailscale Service per UI, served by the
 VM (tagged `tag:platform`) with a Let's Encrypt certificate and handed to Traefik on 127.0.0.1:80; the Ingresses also
-answer these names. Check or (re)configure: `./envs/oracle/tailscale-services.sh [--check]`. A rebuilt VM needs it
-run once (after bootstrap-vm.sh and re-tagging the machine `tag:platform` in the console). The sslip.io names and
+answer these names. Check or (re)configure: `./envs/oracle/tailscale-services.sh [--check]`. A rebuilt VM needs:
+the tailnet policy as in `envs/oracle/tailscale-policy.hujson` (a copy of the console's; paste it back if lost), the
+machine re-tagged `tag:platform`, the five Services defined (listed at the end of that file), then the script once. The sslip.io names and
 `ui.sh` remain the fallback. No Kubernetes operator on purpose: its proxies run privileged (ADR-014).
 
 ## lakeFS garbage collection

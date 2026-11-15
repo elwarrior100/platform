@@ -1,0 +1,35 @@
+// Copy of the tailnet policy file (Tailscale console > Access controls), kept in git so a rebuild does not depend on
+// memory. The CONSOLE is what Tailscale applies: edit there, then paste the result here (or adopt Tailscale's GitOps
+// action later, which needs a Tailscale API key in the repository secrets). Last synced: 2026-11-15.
+// Used by: envs/oracle/tailscale-services.sh (the VM is tagged tag:platform and serves five Tailscale Services).
+{
+	// Tags for the Kubernetes operator (kept, unused: the operator was rejected, ADR-014) and for the VM.
+	"tagOwners": {
+		"tag:k8s-operator": [],
+		"tag:k8s":          ["tag:k8s-operator"],
+		"tag:platform":     ["autogroup:admin"],
+	},
+
+	// The VM (tag:platform) may serve Services tagged tag:platform without a manual approval each time.
+	"autoApprovers": {
+		"services": {
+			"tag:platform": ["tag:platform"],
+		},
+	},
+
+	// Everything in this one-person tailnet may reach everything (default policy).
+	"grants": [
+		{"src": ["*"], "dst": ["*"], "ip": ["*"]},
+	],
+
+	"ssh": [
+		{
+			"action": "check",
+			"src":    ["autogroup:member"],
+			"dst":    ["autogroup:self"],
+			"users":  ["autogroup:nonroot", "root"],
+		},
+	],
+}
+// Also defined only in the console (Services page): svc:airflow, svc:grafana, svc:argocd, svc:lakefs,
+// svc:openmetadata, each port tcp:443 and tag tag:platform; and the machine platform-oracle tagged tag:platform.

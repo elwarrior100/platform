@@ -60,3 +60,6 @@ mkdir -p "$HOME/.kube"
 ssh -o BatchMode=yes "ubuntu@$HOST" 'cat /etc/rancher/k3s/k3s.yaml' | sed "s#https://127.0.0.1:6443#https://$HOST:6443#" > "$HOME/.kube/oracle.yaml"
 chmod 600 "$HOME/.kube/oracle.yaml"
 KUBECONFIG="$HOME/.kube/oracle.yaml" kubectl get nodes -o wide
+
+# HTTPS names (Tailscale Services): needs the VM tagged tag:platform in the console first (docs/runbook.md).
+"$(dirname "$0")/tailscale-services.sh" || echo "HTTPS names not ready yet: tag the VM tag:platform, then run envs/oracle/tailscale-services.sh"
