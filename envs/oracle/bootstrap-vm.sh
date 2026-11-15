@@ -31,6 +31,12 @@ sudo systemctl restart systemd-logind
 printf 'apiVersion: kubelet.config.k8s.io/v1beta1\nkind: KubeletConfiguration\nshutdownGracePeriod: 90s\nshutdownGracePeriodCriticalPods: 30s\n' \
   | sudo tee /var/lib/rancher/k3s/agent/etc/kubelet.conf.d/99-graceful-shutdown.conf >/dev/null
 
+# A slice of the 2 OCPU and 12 GB kept for k3s itself and the OS, outside every pod's reach. Without it, restarting
+# several heavy pods at once starved k3s' own database (kine) until k3s exited (2026-11-15). The scheduler sees
+# 250m CPU and 768Mi less; pod requests were trimmed to their measured use to fit.
+printf 'apiVersion: kubelet.config.k8s.io/v1beta1\nkind: KubeletConfiguration\nsystemReserved:\n  cpu: 100m\n  memory: 384Mi\nkubeReserved:\n  cpu: 150m\n  memory: 384Mi\n' \
+  | sudo tee /var/lib/rancher/k3s/agent/etc/kubelet.conf.d/98-reserved.conf >/dev/null
+
 # k3s, pinned. The API certificate also covers the Tailscale name and IP, so kubectl works from the Mac.
 if ! command -v k3s >/dev/null || ! k3s --version | grep -q "$K3S_VERSION"; then
   TS_IP="$(tailscale ip -4)"
