@@ -2,7 +2,8 @@
 # application's project was only created by the root application itself). For BOTH environments, on a throw-away
 # kind cluster: install-argocd.sh, then that environment's root application pointed at the commit under test; passes
 # when root syncs, every application of envs/<env>/apps exists, and none has an InvalidSpecError (a wrong project,
-# destination or permission). It does not wait for workloads to become healthy (no vault, no data here): it tests the
+# destination or permission) or a ComparisonError (manifests that do not generate). Every child application is pinned
+# to the commit too (kustomize patches on the root application), so the whole tree is tested, not a branch. It does not wait for workloads to become healthy (no vault, no data here): it tests the
 # bootstrap order and the app-of-apps. Runs when that path changes, weekly, and by hand.
 name: bootstrap
 
@@ -41,9 +42,27 @@ jobs:
           cluster_name: bootstrap
       - name: 1. install Argo CD (as on a new cluster)
         run: ./scripts/install-argocd.sh
-      - name: 2. apply the root application (at the commit under test)
+      - name: 2. apply the root application, with EVERY application pinned to the commit under test
+        # root itself at the SHA, and kustomize patches (the same ones envs/oracle/apps uses for "oracle") that move
+        # every child application and the projects ApplicationSet to the SHA too, so the whole tree is tested.
         run: |
-          sed "s|targetRevision: .*|targetRevision: ${{ github.sha }}|" envs/${{ matrix.env }}/root-app.yaml | kubectl apply -f -
+          python3 - "${{ matrix.env }}" "${{ github.sha }}" <<'PY' | kubectl apply -f -
+          import json, re, sys
+          env, sha = sys.argv[1:]
+          text = re.sub(r"targetRevision: .*", "targetRevision: " + sha, open(f"envs/{env}/root-app.yaml").read())
+          def patch(target, *paths):
+              return {"target": target, "patch": json.dumps([{"op": "replace", "path": p, "value": sha} for p in paths])}
+          patches = [
+              patch({"kind": "Application", "labelSelector": "platform/git-source=true"}, "/spec/source/targetRevision"),
+              patch({"kind": "Application", "labelSelector": "platform/values-source=true"}, "/spec/sources/1/targetRevision", "/spec/sources/2/targetRevision"),
+              patch({"kind": "Application", "labelSelector": "platform/values-source-1=true"}, "/spec/sources/1/targetRevision"),
+              patch({"kind": "ApplicationSet", "name": "projects"}, "/spec/generators/0/git/revision", "/spec/template/spec/source/targetRevision"),
+          ]
+          # the block goes right under source.path (indentation decides where YAML puts it)
+          text = re.sub(r"(\n    path: [^\n]*)", lambda m: m.group(1) + "\n    kustomize:\n      patches: " + json.dumps(patches), text, count=1)
+          print(text)
+          PY
+          kubectl -n argocd get app root -o jsonpath='{.spec.source}'; echo
       - name: 3. root syncs and creates every application
         run: |
           want=$(kubectl kustomize envs/${{ matrix.env }}/apps | grep -c '^kind: Application$')
@@ -61,13 +80,24 @@ jobs:
           [ "$sync" = Synced ] && [ "$have" -ge "$want" ] || {
             echo "::error::root=${sync:-?}, applications $have of $want; root conditions: $(kubectl -n argocd get app root -o jsonpath='{.status.conditions[*].message}' | head -c 400)"
             exit 1; }
-          sleep 60   # give every application one reconciliation, then look for spec errors (wrong project/destination)
-          bad=$(kubectl -n argocd get applications -o json | python3 -c '
+          # every application must have a valid spec AND generate its manifests at this commit (no ComparisonError:
+          # broken YAML, a missing path, a chart that does not render). CRDs arrive with their operators, so errors
+          # are allowed to clear for up to 10 minutes.
+          for i in $(seq 1 40); do
+            bad=$(kubectl -n argocd get applications -o json | python3 -c '
           import json, sys
           for a in json.load(sys.stdin)["items"]:
               for c in a.get("status", {}).get("conditions") or []:
-                  if c["type"] == "InvalidSpecError":
-                      print(a["metadata"]["name"] + ": " + c["message"])')
-          [ -z "$bad" ] || { echo "::error::invalid spec: $(echo "$bad" | head -c 600 | tr '\n' ';')"; exit 1; }
+                  if c["type"] in ("InvalidSpecError", "ComparisonError"):
+                      print(a["metadata"]["name"] + " " + c["type"] + ": " + c["message"][:200])')
+            [ -z "$bad" ] && break
+            echo "still: $(echo "$bad" | wc -l) application(s) with errors"; sleep 15
+          done
+          kubectl -n argocd get applications -o custom-columns=NAME:.metadata.name,REV:.status.sync.revision,SYNC:.status.sync.status,HEALTH:.status.health.status
+          [ -z "$bad" ] || { echo "::error::application errors at ${{ github.sha }}: $(echo "$bad" | head -c 900 | tr '\n' ';')"; exit 1; }
           for p in bootstrap platform modbus default; do kubectl -n argocd get appproject "$p" >/dev/null; done
-          echo "OK: fresh bootstrap works ($have applications, root Synced)"
+          revs=$(kubectl -n argocd get applications -o json | python3 -c '
+          import json, sys
+          print(sorted({(a["status"].get("sync") or {}).get("revision") or "-" for a in json.load(sys.stdin)["items"] if a["spec"].get("source", {}).get("repoURL", "").endswith("platform.git")}))')
+          echo "revisions of the platform-repo applications: $revs"
+          echo "OK: fresh bootstrap works ($have applications, root Synced, every manifest generated at the commit)"
