@@ -16,7 +16,7 @@ opensearch:
     imageTag: 1.37.0@sha256:a7dbc319b1438115a207e11930dc4bb3e643dcb3ec0bdd694bb36cd8fad289ec
   resources:
     requests:
-      cpu: "200m"
+      cpu: "100m"         # measured ~20m; the request is what the scheduler reserves (2 OCPU, k3s needs its share)
       memory: "1500M"
     limits:
       cpu: "1"            # at most half of the 2 OCPU on Oracle (written as Kubernetes stores it, so Argo CD sees no diff)
