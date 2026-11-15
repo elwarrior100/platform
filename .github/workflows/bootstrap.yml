@@ -57,7 +57,10 @@ jobs:
           kubectl -n argocd get appprojects
           kubectl -n argocd get applications -o custom-columns=NAME:.metadata.name,PROJECT:.spec.project,SYNC:.status.sync.status
           kubectl -n argocd get app root -o jsonpath='{range .status.conditions[*]}{.type}: {.message}{"\n"}{end}'
-          [ "$sync" = Synced ] && [ "$have" -ge "$want" ] || { echo "FAIL: a fresh cluster does not bootstrap"; exit 1; }
+          # failures are also written as ::error:: annotations: they are public, the job log is not
+          [ "$sync" = Synced ] && [ "$have" -ge "$want" ] || {
+            echo "::error::root=${sync:-?}, applications $have of $want; root conditions: $(kubectl -n argocd get app root -o jsonpath='{.status.conditions[*].message}' | head -c 400)"
+            exit 1; }
           sleep 60   # give every application one reconciliation, then look for spec errors (wrong project/destination)
           bad=$(kubectl -n argocd get applications -o json | python3 -c '
           import json, sys
@@ -65,6 +68,6 @@ jobs:
               for c in a.get("status", {}).get("conditions") or []:
                   if c["type"] == "InvalidSpecError":
                       print(a["metadata"]["name"] + ": " + c["message"])')
-          [ -z "$bad" ] || { echo "FAIL: applications with an invalid spec:"; echo "$bad"; exit 1; }
+          [ -z "$bad" ] || { echo "::error::invalid spec: $(echo "$bad" | head -c 600 | tr '\n' ';')"; exit 1; }
           for p in bootstrap platform modbus default; do kubectl -n argocd get appproject "$p" >/dev/null; done
           echo "OK: fresh bootstrap works ($have applications, root Synced)"
