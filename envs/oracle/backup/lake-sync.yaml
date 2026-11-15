@@ -1,7 +1,14 @@
 # Nightly copy of the lake objects (SeaweedFS bucket "lake") to Object Storage (platform-lake-backup), so the
-# lakeFS metadata in the pg_dump always has its objects somewhere off the VM disk. lakeFS objects never change, so
-# the copy is --immutable: it only adds new objects and fails instead of overwriting (the VM may neither overwrite
-# nor delete there). On success it posts lake_sync_success (OCI alarm when missing). Runs after pg-backup (02:30).
+# lakeFS metadata in the pg_dump always has its objects somewhere off the VM disk. IN BUNDLES (ADR-016): copied one
+# object at a time, a lake of thousands of small files needed ~6k requests a night and broke the free 50k requests a
+# month. Now, each night:
+#   - list the lake (free: it is in the cluster) and read the newest catalog (catalog/<time>.txt.gz: one line per
+#     object already copied, "key<TAB>bundle")
+#   - pack only the new objects into bundles/<time>-incr.tar.gz; on the 1st of the month pack EVERYTHING into
+#     bundles/<time>-full.tar.gz (so a restore never needs more than a month of bundles)
+#   - write the new catalog (previous lines + the new ones; after a full, only the full's)
+# About 4 requests a night. Names are timestamps: nothing is ever overwritten, and the VM may neither overwrite nor
+# delete there. On success it posts lake_sync_success (OCI alarm when missing). Runs after pg-backup (02:30).
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -23,7 +30,7 @@ spec:
         spec:
           restartPolicy: Never
           automountServiceAccountToken: false   # it never talks to the Kubernetes API
-          volumes: [{name: cfg, emptyDir: {}}, {name: tmp, emptyDir: {sizeLimit: 512Mi}}]
+          volumes: [{name: cfg, emptyDir: {}}, {name: tmp, emptyDir: {sizeLimit: 512Mi}}, {name: work, emptyDir: {sizeLimit: 12Gi}}]
           initContainers:
             # the Object Storage namespace and the bucket's compartment are looked up with the instance principal,
             # so no account identifier has to live in this public repository
@@ -39,29 +46,57 @@ spec:
                   printf 'export RCLONE_CONFIG_OCI_NAMESPACE=%s RCLONE_CONFIG_OCI_COMPARTMENT=%s RCLONE_CONFIG_OCI_REGION=%s\n' "$NS" "$COMP" "$REGION" > /cfg/oci.env
               volumeMounts: [{name: cfg, mountPath: /cfg}, {name: tmp, mountPath: /tmp}]
               securityContext: {runAsUser: 1000, allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}, readOnlyRootFilesystem: true}
-            - name: copy
+            - name: bundle
               image: rclone/rclone:1.71.2@sha256:3103526c506266a9ecdf064efe99bf3677d92ef6407af124d8c56b4f49cbaa51
               envFrom: [{secretRef: {name: seaweedfs-s3}}]
               env:
-                # source: SeaweedFS S3 gateway (keys from the secret above)
+                # source: SeaweedFS S3 gateway (read-only key from the secret above)
                 - {name: RCLONE_CONFIG_LAKE_TYPE, value: s3}
                 - {name: RCLONE_CONFIG_LAKE_PROVIDER, value: SeaweedFS}
                 - {name: RCLONE_CONFIG_LAKE_ENDPOINT, value: "http://seaweedfs.data.svc.cluster.local:8333"}
-                # target: OCI Object Storage with the VM's instance principal (no key)
+                # target: OCI Object Storage with the VM's instance principal (no key); big parts, few in parallel:
+                # few requests per upload and ~128Mi of buffers
                 - {name: RCLONE_CONFIG_OCI_TYPE, value: oracleobjectstorage}
                 - {name: RCLONE_CONFIG_OCI_PROVIDER, value: instance_principal_auth}
+                - {name: RCLONE_OOS_CHUNK_SIZE, value: 64Mi}
+                - {name: RCLONE_OOS_UPLOAD_CUTOFF, value: 256Mi}
+                - {name: RCLONE_OOS_UPLOAD_CONCURRENCY, value: "2"}
                 - {name: HOME, value: /tmp}
               command: [sh, -ec]
               args:
                 - |
                   . /cfg/oci.env
-                  rclone copy lake:lake oci:platform-lake-backup --immutable --size-only --no-update-modtime --transfers 2 --checkers 4 --stats-one-line -v
-                  echo "lake objects in the backup: $(rclone size oci:platform-lake-backup --json)"
-              volumeMounts: [{name: cfg, mountPath: /cfg}, {name: tmp, mountPath: /tmp}]
-              resources: {requests: {cpu: 50m, memory: 64Mi}, limits: {memory: 256Mi}}
+                  B=oci:platform-lake-backup
+                  NOW=$(date -u +%Y%m%dT%H%M%S)
+                  cd /work
+                  rclone lsf -R --files-only lake:lake | sort > lake.txt                      # the lake (in the cluster: free)
+                  LATEST=$(rclone lsf "$B/catalog/" 2>/dev/null | sort | tail -1)              # 1 request
+                  if [ "$(date -u +%d)" = 01 ] || [ -z "$LATEST" ]; then
+                    MODE=full; : > catalog.txt
+                  else
+                    MODE=incr; rclone cat "$B/catalog/$LATEST" | gunzip > catalog.txt            # 1 request
+                  fi
+                  cut -f1 catalog.txt | sort > have.txt
+                  comm -23 lake.txt have.txt > new.txt
+                  N=$(wc -l < new.txt | tr -d ' ')
+                  echo "lake: $(wc -l < lake.txt | tr -d ' ') objects; already bundled: $(wc -l < have.txt | tr -d ' '); new: $N ($MODE)"
+                  if [ "$N" -gt 0 ]; then
+                    BUNDLE="$NOW-$MODE.tar.gz"
+                    rclone copy lake:lake files --files-from new.txt --transfers 4 -q        # in the cluster: free
+                    tar -C files -czf bundle.tar.gz .
+                    rclone copyto bundle.tar.gz "$B/bundles/$BUNDLE"                          # 1 request (or a few parts)
+                    { cat catalog.txt; awk -v b="$BUNDLE" '{print $0 "\t" b}' new.txt; } | gzip > catalog.new.gz
+                    rclone copyto catalog.new.gz "$B/catalog/$NOW.txt.gz"                     # 1 request
+                    echo "uploaded bundles/$BUNDLE ($(du -h bundle.tar.gz | cut -f1)) and catalog/$NOW.txt.gz"
+                    rm -rf files bundle.tar.gz
+                  else
+                    echo "nothing new: no upload"
+                  fi
+              volumeMounts: [{name: cfg, mountPath: /cfg}, {name: tmp, mountPath: /tmp}, {name: work, mountPath: /work}]
+              resources: {requests: {cpu: 50m, memory: 96Mi}, limits: {memory: 512Mi}}
               securityContext: {runAsUser: 65534, allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}, readOnlyRootFilesystem: true}
           containers:
-            - name: heartbeat          # runs only if the copy (an init container) succeeded
+            - name: heartbeat          # runs only if the bundle (an init container) succeeded
               image: ghcr.io/oracle/oci-cli:latest@sha256:2127c2f50ee1353fa78cbf538ab91ffaccc0d02b6d0b4144530cef6ee69709f5
               env: [{name: OCI_CLI_AUTH, value: instance_principal}, {name: HOME, value: /tmp}]
               command: [sh, -ec]

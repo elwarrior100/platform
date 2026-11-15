@@ -3,7 +3,7 @@
 # at most). One pod, everything on localhost:
 #   fetch            newest complete dump set (_COMPLETE) from platform-backups: globals.sql + lakefs.dump
 #   postgres         scratch Postgres (sidecar)               <- globals + lakefs.dump restored into it
-#   seaweedfs        scratch SeaweedFS (sidecar, bucket lake)  <- every object of platform-lake-backup copied into it
+#   seaweedfs        scratch SeaweedFS (sidecar, bucket lake)  <- the bundles of the newest catalog, unpacked (ADR-016)
 #   lakefs           scratch lakeFS on those two (sidecar), same encryption key and admin key as the real one
 #   check            per repository: main's commit, then EVERY object on main read once (streamed, from the scratch
 #                    SeaweedFS) and its MD5 compared with the checksum lakeFS recorded at write time; then
@@ -37,6 +37,7 @@ spec:
             - {name: work, emptyDir: {sizeLimit: 2Gi}}
             - {name: pg, emptyDir: {sizeLimit: 3Gi}}
             - {name: sw, emptyDir: {sizeLimit: 20Gi}}
+            - {name: stage, emptyDir: {sizeLimit: 20Gi}}   # the unpacked bundles, before they go into the scratch SeaweedFS
             - {name: tmp, emptyDir: {sizeLimit: 512Mi}}
             - {name: pgrun, emptyDir: {sizeLimit: 16Mi}}
           initContainers:
@@ -97,10 +98,18 @@ spec:
               args:
                 - |
                   . /work/oci.env
+                  B=oci:platform-lake-backup
+                  # bundles (ADR-016): the newest catalog says which bundles hold the copied objects; fetch only those
+                  # (1 request each, a month at most since the last full one), unpack, load into the scratch SeaweedFS
+                  CAT=$(rclone lsf "$B/catalog/" | sort | tail -1)
+                  [ -n "$CAT" ] || { echo "no catalog in the lake copy" >&2; exit 1; }
+                  rclone cat "$B/catalog/$CAT" | gunzip | cut -f2 | sort -u > /work/bundles.txt
+                  echo "catalog $CAT: $(wc -l < /work/bundles.txt | tr -d ' ') bundle(s)"
+                  while read -r b; do rclone cat "$B/bundles/$b" | tar -xz -C /stage; done < /work/bundles.txt
                   rclone mkdir lake:lake
-                  rclone copy oci:platform-lake-backup lake:lake --transfers 4 --checkers 8 -q
+                  rclone move /stage lake:lake --transfers 8 -q
                   echo "objects restored into the scratch SeaweedFS: $(rclone size lake:lake --json)"
-              volumeMounts: [{name: work, mountPath: /work}, {name: tmp, mountPath: /tmp}]
+              volumeMounts: [{name: work, mountPath: /work}, {name: tmp, mountPath: /tmp}, {name: stage, mountPath: /stage}]
               resources: {requests: {cpu: 50m, memory: 64Mi}, limits: {memory: 256Mi}}
               securityContext: {runAsUser: 65534, allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}, readOnlyRootFilesystem: true}
             - name: lakefs                   # sidecar, started only after both restores
