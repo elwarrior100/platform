@@ -40,7 +40,7 @@ spec:
             - {name: tmp, emptyDir: {sizeLimit: 3Gi}}
           containers:
             - name: gc
-              image: ghcr.io/elwarrior100/lakefs-gc:9b6ecb8d4924b0a31d5103014ef53a077a15d4ab
+              image: ghcr.io/elwarrior100/lakefs-gc:7d37e6c6dcd133a2d497dae8556ad238d12fa323
               env:
                 - {name: GC_SWEEP, value: "false"}
                 - {name: REPOSITORY, value: industrial-lake}
