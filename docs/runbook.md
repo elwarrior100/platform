@@ -154,3 +154,14 @@ pods see 1.75 CPU. Requests follow measured use (`kubectl top pods -A`); heavy J
 Prometheus have CPU limits. Re-runnable batch jobs (GC, drill) use PriorityClass `platform-batch`. Memory eviction by the kubelet (k3s
 `config.yaml`: soft 600Mi for 1 min, hard 300Mi) evicts pods over their requests first, then by priority; the kernel
 OOM killer (QoS-based, priority-blind) only acts if memory runs out faster than that.
+
+## Zero cost: a budget alert arrived
+Zero cost is a hard requirement. The tenancy budget (terraform/oracle/budget.tf) emails on ANY charge (EUR 0.01) and
+on a forecast over EUR 0.05. When it fires:
+1. Cost by service this month (read-only):
+   `oci usage-api usage-summary request-summarized-usages --tenant-id <tenancy> --time-usage-started <1st of month>
+   --time-usage-ended <tomorrow> --granularity DAILY --query-type COST --group-by '["service","skuName"]'`
+2. Usual suspects and their free limits: Object Storage requests (50,000/month: the lake copy must stay in bundles,
+   ADR-016) and storage (20 GB); block storage (200 GB incl. the boot volume, 5 volume backups); A1 compute (4 OCPU,
+   24 GB); Vault (software keys only; never a virtual private vault); load balancers and reserved IPs (none).
+3. Stop the source first (suspend the CronJob in git, promote), then fix the design, then re-enable.
