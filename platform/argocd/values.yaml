@@ -4,6 +4,10 @@
 # moved, a digest cannot. On a chart upgrade, update the digests too (helm template ... | grep image: shows them).
 configs:
   params:
+    # Fewer parallel workers: on 2 OCPU a large sync (every app at once) starved k3s itself (2026-11-15).
+    controller.status.processors: 5
+    controller.operation.processors: 2
+    controller.kubectl.parallelism.limit: 4
     server.insecure: true        # no TLS on the service; reached through the Traefik Ingress (envs/<env>/ingress) or port-forward
 
 dex:
