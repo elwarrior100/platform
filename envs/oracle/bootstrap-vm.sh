@@ -37,6 +37,14 @@ printf 'apiVersion: kubelet.config.k8s.io/v1beta1\nkind: KubeletConfiguration\ns
 printf 'apiVersion: kubelet.config.k8s.io/v1beta1\nkind: KubeletConfiguration\nsystemReserved:\n  cpu: 100m\n  memory: 384Mi\nkubeReserved:\n  cpu: 150m\n  memory: 384Mi\n' \
   | sudo tee /var/lib/rancher/k3s/agent/etc/kubelet.conf.d/98-reserved.conf >/dev/null
 
+# Memory eviction by the kubelet (k3s sets only imagefs/nodefs thresholds, which switches the kubelet's memory default
+# off): below 600Mi free for 1 min, or 300Mi at once, the kubelet evicts pods in order (QoS, then PriorityClass:
+# platform-batch first, platform-data last) instead of leaving it to the kernel OOM killer, which ignores priority.
+# Command-line flags (config.yaml) win over kubelet.conf.d drop-ins, so this lives here.
+sudo mkdir -p /etc/rancher/k3s
+printf 'kubelet-arg:\n  - "eviction-hard=memory.available<300Mi,imagefs.available<5%%,nodefs.available<5%%"\n  - "eviction-soft=memory.available<600Mi"\n  - "eviction-soft-grace-period=memory.available=1m"\n' \
+  | sudo tee /etc/rancher/k3s/config.yaml >/dev/null
+
 # k3s, pinned. The API certificate also covers the Tailscale name and IP, so kubectl works from the Mac.
 if ! command -v k3s >/dev/null || ! k3s --version | grep -q "$K3S_VERSION"; then
   TS_IP="$(tailscale ip -4)"

@@ -34,7 +34,7 @@ spec:
           labels: {app: lakefs-gc}
         spec:
           restartPolicy: Never
-          priorityClassName: platform-batch     # evicted first under memory pressure; never preempts anything
+          priorityClassName: platform-batch     # kubelet memory eviction takes it before same-rank pods; never preempts
           automountServiceAccountToken: false   # it never talks to the Kubernetes API
           securityContext:
             runAsNonRoot: true

@@ -1,6 +1,7 @@
 # Heartbeat for the weekly lakeFS GC (ADR-015). The GC runs in the data namespace, which by design cannot reach OCI,
 # so it cannot post a metric itself. Every day at 06:00 UTC this job asks the Kubernetes API "did a lakefs-gc Job
-# succeed in the last 8 days?" and posts lake_gc_success = 1 or 0 (OCI alarms: a 0, or nothing for 2 days).
+# succeed in the last 8 days?" (only runs started by the CronJob, not hand-made test Jobs) and posts
+# lake_gc_success = 1 or 0 (OCI alarms: a 0, or nothing for 2 days).
 # Permissions: read Jobs in data, nothing else (Role + RoleBinding below); its egress adds only the API server.
 apiVersion: v1
 kind: ServiceAccount
@@ -70,7 +71,8 @@ spec:
                       raise SystemExit("Kubernetes API unreachable")
                   cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=8)
                   ok = [j for j in jobs
-                        if (j["spec"]["template"]["metadata"].get("labels") or {}).get("app") == "lakefs-gc"
+                        if any(o.get("kind") == "CronJob" and o.get("name") == "lakefs-gc"   # scheduled runs only, not hand-made tests
+                               for o in j["metadata"].get("ownerReferences") or [])
                         and j["status"].get("succeeded") and j["status"].get("completionTime")
                         and datetime.datetime.fromisoformat(j["status"]["completionTime"].replace("Z", "+00:00")) > cutoff]
                   import sys

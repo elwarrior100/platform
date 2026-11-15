@@ -1,5 +1,6 @@
 # Data services (Postgres, SeaweedFS) get the highest priority among workloads: under memory pressure on the
-# 12 GB Oracle node, the kubelet evicts lower-priority pods (task pods, OpenSearch) first.
+# 12 GB Oracle node, the kubelet's memory eviction (thresholds set in bootstrap-vm.sh: 600Mi soft, 300Mi hard) evicts
+# pods using more than they requested first, then by priority, so these go last.
 apiVersion: scheduling.k8s.io/v1
 kind: PriorityClass
 metadata:
@@ -9,7 +10,9 @@ globalDefault: false
 description: Stateful data services of the platform (Postgres, SeaweedFS)
 ---
 # Batch jobs that can always run again later (lakeFS GC, the lake restore drill): the lowest priority, so under
-# memory pressure they are the first to go, and they never preempt anything to get scheduled.
+# memory pressure the kubelet evicts them before other pods within the same rank (pods over their requests go first
+# whatever their priority), and they never preempt anything to get scheduled. Note: if memory runs out faster than the
+# kubelet reacts, the kernel OOM killer decides instead, and it ignores priority (it follows QoS and requests).
 apiVersion: scheduling.k8s.io/v1
 kind: PriorityClass
 metadata:
@@ -17,4 +20,4 @@ metadata:
 value: -100
 globalDefault: false
 preemptionPolicy: Never
-description: Re-runnable batch jobs of the platform (lakeFS GC, restore drill); evicted first, never preempt
+description: Re-runnable batch jobs of the platform (lakeFS GC, restore drill); evicted before others of the same rank, never preempt

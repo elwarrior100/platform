@@ -30,7 +30,7 @@ spec:
           labels: {app: lake-restore-drill}
         spec:
           restartPolicy: Never
-          priorityClassName: platform-batch     # evicted first under memory pressure; never preempts anything
+          priorityClassName: platform-batch     # kubelet memory eviction takes it before same-rank pods; never preempts
           automountServiceAccountToken: false   # it never talks to the Kubernetes API
           volumes:                         # size caps: a lake that outgrows them fails the drill, never fills the node
             - {name: work, emptyDir: {sizeLimit: 2Gi}}

@@ -142,4 +142,6 @@ GC retention (15 days, `scripts/lakefs-repo.sh`) must stay >= the dump lifecycle
 ## CPU and memory headroom (2 OCPU, 12 GB)
 The kubelet reserves 250m CPU and 768Mi for k3s and the OS (`kubelet.conf.d/98-reserved.conf`, bootstrap-vm.sh):
 pods see 1.75 CPU. Requests follow measured use (`kubectl top pods -A`); heavy JVMs (OpenMetadata, OpenSearch) and
-Prometheus have CPU limits. Re-runnable batch jobs (GC, drill) use PriorityClass `platform-batch`: evicted first.
+Prometheus have CPU limits. Re-runnable batch jobs (GC, drill) use PriorityClass `platform-batch`. Memory eviction by the kubelet (k3s
+`config.yaml`: soft 600Mi for 1 min, hard 300Mi) evicts pods over their requests first, then by priority; the kernel
+OOM killer (QoS-based, priority-blind) only acts if memory runs out faster than that.
