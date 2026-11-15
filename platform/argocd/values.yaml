@@ -1,5 +1,7 @@
 # Values for the argo/argo-cd 10.11.1 chart (Argo CD v3.5.6).
 # Bootstrap with scripts/install-argocd.sh; afterwards Argo CD manages itself (platform/argocd/apps/argocd.yaml).
+# Images pinned by digest (2026-11-15: the exact builds both clusters ran), not only by chart version: a tag can be
+# moved, a digest cannot. On a chart upgrade, update the digests too (helm template ... | grep image: shows them).
 configs:
   params:
     server.insecure: true        # no TLS on the service; reached through the Traefik Ingress (envs/<env>/ingress) or port-forward
@@ -25,7 +27,12 @@ redis:
   resources:
     requests: {cpu: 50m, memory: 64Mi}
     limits: {memory: 128Mi}
+  image:
+    tag: 8.6.4-alpine@sha256:2cc044fc5a07c9b701f8f1255a309ae9ad7856e694ac03513bf3648c01e40763
 applicationSet:
   resources:
     requests: {cpu: 20m, memory: 64Mi}
     limits: {memory: 128Mi}
+global:
+  image:
+    tag: v3.5.6@sha256:8e5cc5bb008df8a09dba439462e58c94c55b7735888d3ebde0c25fc05e4e5335

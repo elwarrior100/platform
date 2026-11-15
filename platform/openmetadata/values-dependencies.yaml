@@ -1,5 +1,7 @@
 # OpenMetadata dependencies: OpenSearch only. The chart's MySQL and Airflow are disabled
 # (we use the existing PostgreSQL and the native Kubernetes orchestrator). See modbus_data_plataform docs/adr/009.
+# Images pinned by digest (2026-11-15: the exact builds both clusters ran), not only by chart version: a tag can be
+# moved, a digest cannot. On a chart upgrade, update the digests too (helm template ... | grep image: shows them).
 mysql:
   enabled: false
 airflow:
@@ -10,6 +12,8 @@ opensearch:
   opensearchJavaOpts: "-Xmx1g -Xms1g"
   persistence:
     size: 10Gi
+    image: busybox
+    imageTag: 1.37.0@sha256:a7dbc319b1438115a207e11930dc4bb3e643dcb3ec0bdd694bb36cd8fad289ec
   resources:
     requests:
       cpu: "200m"
@@ -17,3 +21,6 @@ opensearch:
     limits:
       cpu: "1"            # at most half of the 2 OCPU on Oracle (written as Kubernetes stores it, so Argo CD sees no diff)
       memory: "2048M"
+  majorVersion: '3'
+  image:
+    tag: 3.5.0@sha256:dbb01641baadae5104e18acd888bf05e8fdd9af3567fd30624a76ba3e5a31dec

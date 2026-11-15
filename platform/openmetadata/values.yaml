@@ -1,8 +1,11 @@
 # OpenMetadata 2.0.7 on the existing PostgreSQL and the native Kubernetes orchestrator (one Job per ingestion).
 # The database password comes from the `openmetadata-db` Secret (External Secrets Operator, from the vault).
 # Installed and kept in sync by Argo CD (platform/argocd/apps/openmetadata.yaml).
+# Images pinned by digest (2026-11-15: the exact builds both clusters ran), not only by chart version: a tag can be
+# moved, a digest cannot. On a chart upgrade, update the digests too (helm template ... | grep image: shows them).
 image:
   pullPolicy: IfNotPresent
+  tag: 2.0.7@sha256:327cdd85b868f9ce27828e1ce519d4e2ba603345520bd728b754241c9f38374c
 openmetadata:
   config:
     database:

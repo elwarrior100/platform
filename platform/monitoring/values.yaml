@@ -1,6 +1,8 @@
 # kube-prometheus-stack 93.3.0, sized for the 12 GB Oracle node: Prometheus + Grafana + the standard Kubernetes
 # dashboards and alert rules. Alerts show in Grafana and Prometheus; the alarms that must fire even when the whole VM
 # is down are OCI Monitoring alarms outside the VM (terraform/oracle/alarms.tf).
+# Images pinned by digest (2026-11-15: the exact builds both clusters ran), not only by chart version: a tag can be
+# moved, a digest cannot. On a chart upgrade, update the digests too (helm template ... | grep image: shows them).
 crds:
   enabled: true
 alertmanager:
@@ -16,6 +18,13 @@ grafana:
   resources:
     requests: {cpu: 20m, memory: 192Mi}
     limits: {memory: 512Mi}        # 256Mi was OOM-killed at start-up (Grafana 12 loads its plugins)
+  image:
+    sha: 54e297ac67e2b72572f926892f4e06074dc4f79f2a56ed9a9ca9a88a46f28733
+  sidecar:
+    image:
+      sha: 52d311dcedd587421a236c4d6c621f05614c40a51386e955e0699dca97ec0880
+  testFramework:
+    enabled: false
 prometheus:
   prometheusSpec:
     scrapeInterval: 60s
@@ -30,20 +39,35 @@ prometheus:
           storageClassName: local-path
           accessModes: [ReadWriteOnce]
           resources: {requests: {storage: 4Gi}}
+    image:
+      sha: 9764044e09eb2c9e1abdb12d0f0188d4efb7384b0262d3c080f0fc59045c89ba
 prometheusOperator:
   resources:
     requests: {cpu: 20m, memory: 64Mi}
     limits: {memory: 192Mi}
+  image:
+    sha: 7986c2afa118c9dea07d01c5e1a29555824582e92f6ee8607591d1a7178acf29
+  prometheusConfigReloader:
+    image:
+      sha: cc74ddedad4ab1c49446971f6d51302ad4303d8660a2018af925c7f62c114304
+  admissionWebhooks:
+    patch:
+      image:
+        sha: 8009b04f9873f7279b5adee37fdd03b6a9aa7b6751d4f69fde2683010e41cd1f
 kube-state-metrics:
   resources:
     requests: {cpu: 10m, memory: 48Mi}
     limits: {memory: 128Mi}
+  image:
+    sha: sha256:42cfe3723a5f058171c627537fb57a3ea0f26e4380fa18555a95cb1a1b4cfc5b
 prometheus-node-exporter:
   hostNetwork: false             # the admission policies forbid hostNetwork and hostPID outside kube-system;
   hostPID: false                 # host CPU, memory, disk and network metrics still come from /proc and /sys
   resources:
     requests: {cpu: 10m, memory: 24Mi}
     limits: {memory: 64Mi}
+  image:
+    digest: sha256:8c9bac11973b94b59be88d6e11fee4429aa743c8846cdc75d65b18db33f6a106
 # k3s runs these inside one process and does not expose them to Prometheus: scraping them would only raise false alerts
 kubeEtcd:
   enabled: false
