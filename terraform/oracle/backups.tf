@@ -65,7 +65,7 @@ resource "oci_objectstorage_bucket" "lake" {
 }
 
 # Uploads of big bundles go in parts (ADR-016); a failed one leaves parts that take space but no listing shows. Object
-# Storage aborts such unfinished uploads after 2 days. It deletes no object, so the copy stays immutable.
+# Storage aborts such unfinished uploads after 2 days (this deletes no object).
 resource "oci_objectstorage_object_lifecycle_policy" "lake" {
   namespace = data.oci_objectstorage_namespace.this.namespace
   bucket    = oci_objectstorage_bucket.lake.name
@@ -76,6 +76,21 @@ resource "oci_objectstorage_object_lifecycle_policy" "lake" {
     time_amount = 2
     time_unit   = "DAYS"
     target      = "multipart-uploads"
+  }
+  # One-off clean-up of the legacy object-by-object copy (ADR-016), done by Object Storage itself (not the VM, which
+  # still cannot delete): its objects were written on 2026-11-14/15, so 18 days lands on 2 to 3 December, inside a
+  # fresh monthly request budget. Only these legacy prefixes: bundles/ and catalog/ are never touched, and nothing
+  # writes to these prefixes any more. Remove this rule once the bucket holds only bundles/ and catalog/.
+  rules {
+    name        = "delete-legacy-object-copy-after-18-days"
+    action      = "DELETE"
+    is_enabled  = true
+    time_amount = 18
+    time_unit   = "DAYS"
+    target      = "objects"
+    object_name_filter {
+      inclusion_prefixes = ["_lakefs/", "data/", "_prune/"]
+    }
   }
   depends_on = [oci_identity_policy.backups]
 }
