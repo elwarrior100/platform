@@ -71,8 +71,11 @@ spec:
                       raise SystemExit("Kubernetes API unreachable")
                   cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=8)
                   ok = [j for j in jobs
-                        if any(o.get("kind") == "CronJob" and o.get("name") == "lakefs-gc"   # scheduled runs only, not hand-made tests
+                        if any(o.get("kind") == "CronJob" and o.get("name") == "lakefs-gc"
                                for o in j["metadata"].get("ownerReferences") or [])
+                        # scheduled runs only: "kubectl create job --from=cronjob/..." also sets the CronJob as owner,
+                        # but marks the Job with this annotation (10th review)
+                        and (j["metadata"].get("annotations") or {}).get("cronjob.kubernetes.io/instantiate") != "manual"
                         and j["status"].get("succeeded") and j["status"].get("completionTime")
                         and datetime.datetime.fromisoformat(j["status"]["completionTime"].replace("Z", "+00:00")) > cutoff]
                   import sys

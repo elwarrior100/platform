@@ -64,13 +64,20 @@ spec:
               command: [sh, -ec]
               args:
                 - |
+                  set -o pipefail                       # a failed rclone in a pipe fails the run
                   . /cfg/oci.env
                   B=oci:platform-lake-backup
                   NOW=$(date -u +%Y%m%dT%H%M%S)
                   cd /work
                   rclone lsf -R --files-only lake:lake | sort > lake.txt                      # the lake (in the cluster: free)
-                  LATEST=$(rclone lsf "$B/catalog/" 2>/dev/null | sort | tail -1)              # 1 request
-                  if [ "$(date -u +%d)" = 01 ] || [ -z "$LATEST" ]; then
+                  rclone lsf "$B/catalog/" > catalogs.txt                                   # 1 request; an error fails the run
+                  rclone lsf "$B/bundles/" --include '*-full.tar.gz' > fulls.txt            # 1 request
+                  LATEST=$(sort catalogs.txt | tail -1)
+                  NEWEST_FULL=$(sort fulls.txt | tail -1 | cut -c1-8)                        # YYYYMMDD
+                  MONTH_AGO=$(date -u -d "@$(( $(date +%s) - 31 * 86400 ))" +%Y%m%d)
+                  # a full on the 1st, or when the newest full is over 31 days old (the VM was down on the 1st), or the
+                  # very first time (the listing worked and is empty)
+                  if [ "$(date -u +%d)" = 01 ] || [ -z "$LATEST" ] || [ -z "$NEWEST_FULL" ] || [ "$NEWEST_FULL" \< "$MONTH_AGO" ]; then
                     MODE=full; : > catalog.txt
                   else
                     MODE=incr; rclone cat "$B/catalog/$LATEST" | gunzip > catalog.txt            # 1 request

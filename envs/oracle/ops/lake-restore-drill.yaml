@@ -96,6 +96,7 @@ spec:
               command: [sh, -ec]
               args:
                 - |
+                  set -o pipefail                       # a failed download in a pipe fails the run
                   . /work/oci.env
                   B=oci:platform-lake-backup
                   # bundles (ADR-016): the newest catalog says which bundles hold the copied objects; fetch only those
@@ -129,6 +130,7 @@ spec:
                 - {name: LAKEFS_BLOCKSTORE_S3_DISABLE_PRE_SIGNED, value: "true"}
                 - {name: LAKEFS_EMAIL_SUBSCRIPTION_ENABLED, value: "false"}
                 - {name: LAKEFS_STATS_ENABLED, value: "false"}
+                - {name: LAKEFS_DATABASE_POSTGRES_MAX_OPEN_CONNECTIONS, value: "10"}   # the scratch Postgres is small
                 - {name: HOME, value: /tmp}
               startupProbe: {httpGet: {path: /_health, port: 8000}, periodSeconds: 2, failureThreshold: 90}
               resources: {requests: {cpu: 50m, memory: 128Mi}, limits: {memory: 512Mi}}

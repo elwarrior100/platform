@@ -64,6 +64,22 @@ resource "oci_objectstorage_bucket" "lake" {
   versioning     = "Disabled"
 }
 
+# Uploads of big bundles go in parts (ADR-016); a failed one leaves parts that take space but no listing shows. Object
+# Storage aborts such unfinished uploads after 2 days. It deletes no object, so the copy stays immutable.
+resource "oci_objectstorage_object_lifecycle_policy" "lake" {
+  namespace = data.oci_objectstorage_namespace.this.namespace
+  bucket    = oci_objectstorage_bucket.lake.name
+  rules {
+    name        = "abort-unfinished-uploads-after-2-days"
+    action      = "ABORT"
+    is_enabled  = true
+    time_amount = 2
+    time_unit   = "DAYS"
+    target      = "multipart-uploads"
+  }
+  depends_on = [oci_identity_policy.backups]
+}
+
 resource "oci_identity_policy" "backups" {
   compartment_id = var.compartment_id
   name           = "platform-backups"
