@@ -192,6 +192,6 @@ spec:
                   echo "heartbeat posted (lake_drill_success=$VALUE)"
                   exit $rc
               volumeMounts: [{name: work, mountPath: /work}]
-              resources: {requests: {cpu: 50m, memory: 96Mi}, limits: {memory: 256Mi, ephemeral-storage: 256Mi}}
+              resources: {requests: {cpu: 50m, memory: 96Mi}, limits: {memory: 256Mi}}   # no ephemeral-storage limit: with limits on some containers only, the kubelet compares the WHOLE pod (restored data included) with their sum; the emptyDir sizeLimits are the cap
               securityContext: {runAsUser: 1000, allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
           securityContext: {runAsNonRoot: true, seccompProfile: {type: RuntimeDefault}}
