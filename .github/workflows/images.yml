@@ -15,28 +15,40 @@ permissions:
   contents: read
 
 jobs:
-  # Weekly: scan the image tag the cluster actually runs (read from the manifest), so a new CRITICAL CVE, or an
-  # accepted one whose .trivyignore entry expired, fails CI even when nobody touches images/.
+  # Weekly: re-scan EVERY image the platform deploys (scripts/deployed-images.sh: manifests + rendered charts).
+  # Our own image (lakefs-gc) fails CI on a CRITICAL with a fix that is not accepted in its .trivyignore (whose
+  # entries expire); third-party images are REPORTED in the job summary (CRITICAL with a fix, per image), because
+  # only their vendors can fix them: the signal is "time to upgrade that chart", not a red build every week.
   rescan-deployed:
-    if: github.event_name == 'schedule'
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - name: deployed lakefs-gc image
-        id: ref
-        run: echo "image=$(grep -o 'ghcr.io/[^ ]*lakefs-gc:[0-9a-f@:sha]*' envs/oracle/lakefs-gc/gc.yaml | head -1)" >> "$GITHUB_OUTPUT"
-      - name: scan (fails on CRITICAL vulnerabilities that have a fix)
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          image-ref: ${{ steps.ref.outputs.image }}
-          severity: CRITICAL
-          ignore-unfixed: true
-          exit-code: "1"
-          trivyignores: images/lakefs-gc/.trivyignore
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
+      - name: trivy (pinned by checksum)
+        run: |
+          curl -sSL -o tv.tgz https://github.com/aquasecurity/trivy/releases/download/v0.76.2/trivy_0.76.2_Linux-ARM64.tar.gz
+          echo "ab9d51f86e6a5fb936f605faff6b593ac51bc378fff4d3e8b9d58358b9c367c3  tv.tgz" | sha256sum -c -
+          tar -xzf tv.tgz trivy && sudo mv trivy /usr/local/bin/
+          python3 -c 'import yaml' 2>/dev/null || pip install -q pyyaml
+      - name: scan every deployed image
+        run: |
+          ./scripts/deployed-images.sh > images.txt
+          echo "## Deployed images: CRITICAL vulnerabilities with a fix" >> "$GITHUB_STEP_SUMMARY"
+          echo "| image | CRITICAL |" >> "$GITHUB_STEP_SUMMARY"; echo "|---|---|" >> "$GITHUB_STEP_SUMMARY"
+          fail=0
+          while read -r img; do
+            ignore=(); case "$img" in *elwarrior100/lakefs-gc*) ignore=(--ignorefile images/lakefs-gc/.trivyignore) ;; esac
+            n=$(trivy image --quiet --platform linux/arm64 --scanners vuln --severity CRITICAL --ignore-unfixed "${ignore[@]}" \
+                  --format json "$img" 2>/dev/null | python3 -c 'import json,sys; d=json.load(sys.stdin); print(sum(len(r.get("Vulnerabilities") or []) for r in d.get("Results",[])))' || echo "scan failed")
+            echo "| \`${img%%@*}\` | $n |" >> "$GITHUB_STEP_SUMMARY"
+            case "$img" in *elwarrior100/*) [ "$n" = 0 ] || { echo "::error::$img has $n CRITICAL vulnerabilities with a fix"; fail=1; } ;; esac
+          done < images.txt
+          exit $fail
 
   image:
     name: image (${{ matrix.image }})
-    if: github.event_name != 'schedule'
+    if: github.event_name == 'push'
     runs-on: ubuntu-24.04-arm
     permissions:
       contents: read
