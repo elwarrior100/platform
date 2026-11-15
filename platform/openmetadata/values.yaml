@@ -26,3 +26,8 @@ openmetadata:
         ingestionImage: "docker.getcollate.io/openmetadata/ingestion-base:2.0.7"
         rbac:
           enabled: true
+# It had no requests or limits at all. CPU capped at 1 so a restart (JVM warm-up) cannot starve k3s on 2 OCPU
+# (2026-11-15 incident); memory from its measured use (~1.1Gi).
+resources:
+  requests: {cpu: 100m, memory: 1Gi}
+  limits: {cpu: "1", memory: 2Gi}
