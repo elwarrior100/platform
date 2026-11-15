@@ -28,8 +28,8 @@ grafana:
 prometheus:
   prometheusSpec:
     scrapeInterval: 60s
-    retention: 3d
-    retentionSize: 2GB
+    retention: 2d                  # 3d -> 2d (2026-11-15): Grafana is for the last hours; history lives in OCI alarms
+    retentionSize: 1500MB
     resources:
       requests: {cpu: 50m, memory: 400Mi}    # measured ~20m
       limits: {cpu: 500m, memory: 1Gi}       # a WAL replay after a restart cannot take the whole node
