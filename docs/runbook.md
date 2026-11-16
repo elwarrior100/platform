@@ -165,3 +165,16 @@ on a forecast over EUR 0.05. When it fires:
    ADR-016) and storage (20 GB); block storage (200 GB incl. the boot volume, 5 volume backups); A1 compute (4 OCPU,
    24 GB); Vault (software keys only; never a virtual private vault); load balancers and reserved IPs (none).
 3. Stop the source first (suspend the CronJob in git, promote), then fix the design, then re-enable.
+
+## Safeguards: nothing fills up, nothing costs (all email the alert address)
+| Risk | Guard |
+|---|---|
+| Any charge on the tenancy | budget alert at EUR 0.01 actual, EUR 0.05 forecast (budget.tf) |
+| Object Storage requests (50k free/month) | lake copy in bundles (ADR-016); alarm above 1,500 requests in a day |
+| Object Storage space (20 GB free) | alarms at 12 GB (lake copy) and 5 GB (dumps); dumps expire after 14 days; prune by bundle cycles |
+| VM disk | ops/node-health every 30 min, alarm above 80% and when the check stops; kubelet image GC from 70% and after 14 days unused; kubelet evicts pods at 95% |
+| VM memory | OCI MemoryUtilization alarm above 92%; kubelet eviction at 600Mi (soft) / 300Mi (hard), 60 s per pod |
+| CPU starvation of k3s | 250m CPU and 768Mi reserved for k3s/OS; CPU limits on the heavy JVMs and Prometheus |
+| Lake growth | bronze 15 days, weekly lakeFS GC (heartbeat + alarm), branch pruning |
+| Prometheus / logs | retention 2 days / 1.5 GB; Airflow log groomer; journald ~80 MB |
+| A job silently stopped | heartbeats with absence alarms: backup, lake copy, drill, silver freshness, GC, disk |

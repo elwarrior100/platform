@@ -79,9 +79,9 @@ resource "oci_monitoring_alarm" "backup_missing" {
 resource "oci_identity_policy" "metrics" {
   compartment_id = var.compartment_id
   name           = "platform-post-metrics"
-  description    = "The VM may post its own custom metrics (backup heartbeat), nothing else"
+  description    = "The VM may post its own custom metrics (heartbeats, disk use), nothing else"
   statements = [
-    "Allow dynamic-group ${oci_identity_dynamic_group.platform_instances.name} to use metrics in tenancy where any {target.metrics.namespace = 'platform_backup', target.metrics.namespace = 'platform_pipeline'}",
+    "Allow dynamic-group ${oci_identity_dynamic_group.platform_instances.name} to use metrics in tenancy where any {target.metrics.namespace = 'platform_backup', target.metrics.namespace = 'platform_pipeline', target.metrics.namespace = 'platform_node'}",
   ]
 }
 
