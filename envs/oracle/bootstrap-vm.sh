@@ -57,7 +57,18 @@ if ! command -v k3s >/dev/null || ! k3s --version | grep -q "$K3S_VERSION"; then
   curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="$K3S_VERSION" sh -s - server \
     --write-kubeconfig-mode 644 --tls-san "$HOST" --tls-san "$TS_IP" >/dev/null
 fi
-sudo systemctl restart k3s        # picks up config.yaml; pods keep running (KillMode=process)
+# Memory (2026-11-16): k3s is one Go process (API server, kubelet, controllers, kine). Without a target, Go lets its heap
+# grow to twice the live set before collecting (measured: 547 MB live, GC goal 1.12 GB, RSS 1.4 GB). GOMEMLIMIT is a
+# soft target: near it Go collects more often, it never kills. 900MiB: ~200 MB less today, and the live heap can still
+# grow ~60% (more projects) before GC works noticeably harder. Watch go_gc_heap_live_bytes on the k3s /metrics.
+sudo sed -i '/^GOMEMLIMIT=/d' /etc/systemd/system/k3s.service.env
+echo 'GOMEMLIMIT=900MiB' | sudo tee -a /etc/systemd/system/k3s.service.env >/dev/null
+# Host services this VM never uses (~60 MB): firmware updates (a cloud VM has none to apply), modems, desktop disk
+# automount, and multipath (one paravirtual disk, `multipath -ll` is empty). snapd stays (Oracle Cloud Agent is a snap),
+# as do iscsid and unattended-upgrades.
+sudo systemctl disable --now fwupd.service ModemManager.service udisks2.service multipathd.service multipathd.socket 2>/dev/null || true
+sudo systemctl mask fwupd.service ModemManager.service udisks2.service multipathd.service multipathd.socket >/dev/null 2>&1 || true
+sudo systemctl restart k3s        # picks up config.yaml and the env file; pods keep running (KillMode=process)
 for _ in $(seq 1 30); do sudo k3s kubectl get nodes 2>/dev/null | grep -q ' Ready' && break; sleep 5; done
 echo "k3s: $(k3s --version | head -1) | swap: $(swapon --show --noheadings | awk '{print $3}') | kernel: $(uname -r)"
 REMOTE
