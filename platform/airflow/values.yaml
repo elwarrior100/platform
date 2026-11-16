@@ -28,6 +28,8 @@ config:
     # project repository and refreshes it every refresh_interval seconds: a pushed DAG shows up without a new image.
     # (one line: the chart copies this value into airflow.cfg). tracking_ref is the SAME commit as MODBUS_PIPELINES_IMAGE:
     # DAG and task code move together, in one platform commit, so they can never drift apart.
+    # Memory (2026-11-16): one parsing process instead of the default 2 (a handful of DAGs, parsed in seconds): ~60Mi
+    parsing_processes: "1"
     dag_bundle_config_list: '[{"name": "modbus", "classpath": "airflow.providers.git.bundles.git.GitDagBundle", "kwargs": {"repo_url": "https://github.com/elwarrior100/modbus_data_plataform.git", "tracking_ref": "c2d511fc3ec8008346cc1661dff73a86ba45d215", "subdir": "pipelines/dags", "refresh_interval": 120}}]'
 
 # Metadata database: the "airflow" database in the platform PostgreSQL (role prepared by scripts/install-airflow.sh;
