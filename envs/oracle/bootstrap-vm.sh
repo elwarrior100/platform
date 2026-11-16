@@ -66,8 +66,8 @@ echo 'GOMEMLIMIT=900MiB' | sudo tee -a /etc/systemd/system/k3s.service.env >/dev
 # Host services this VM never uses (~60 MB): firmware updates (a cloud VM has none to apply), modems, desktop disk
 # automount, and multipath (one paravirtual disk, `multipath -ll` is empty). snapd stays (Oracle Cloud Agent is a snap),
 # as do iscsid and unattended-upgrades.
-sudo systemctl disable --now fwupd.service ModemManager.service udisks2.service multipathd.service multipathd.socket 2>/dev/null || true
-sudo systemctl mask fwupd.service ModemManager.service udisks2.service multipathd.service multipathd.socket >/dev/null 2>&1 || true
+sudo systemctl disable --now fwupd.service fwupd-refresh.timer ModemManager.service udisks2.service multipathd.service multipathd.socket 2>/dev/null || true
+sudo systemctl mask fwupd.service fwupd-refresh.timer fwupd-refresh.service ModemManager.service udisks2.service multipathd.service multipathd.socket >/dev/null 2>&1 || true
 sudo systemctl restart k3s        # picks up config.yaml and the env file; pods keep running (KillMode=process)
 for _ in $(seq 1 30); do sudo k3s kubectl get nodes 2>/dev/null | grep -q ' Ready' && break; sleep 5; done
 echo "k3s: $(k3s --version | head -1) | swap: $(swapon --show --noheadings | awk '{print $3}') | kernel: $(uname -r)"
