@@ -34,3 +34,9 @@ resources:
 # JVM heap 768m instead of the image's 1G default (2026-11-15): the defaults are sized for enterprise catalogs.
 extraEnvs:
   - {name: OPENMETADATA_HEAP_OPTS, value: "-Xmx768m -Xms768m"}
+  # Database pool (2026-11-16): the defaults (max 100, 20 kept idle) could take every one of Postgres' 100 connections
+  # and starve ingestion and lakeFS; ~30 sat idle (~2 MB each). Max 20, 5 idle: plenty for one catalog.
+  - {name: DB_CONNECTION_POOL_MAX_SIZE, value: "20"}
+  - {name: DB_CONNECTION_POOL_MIN_SIZE, value: "5"}
+  - {name: DB_CONNECTION_POOL_MIN_IDLE, value: "5"}
+  - {name: DB_CONNECTION_POOL_INITIAL_SIZE, value: "5"}
