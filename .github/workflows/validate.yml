@@ -52,7 +52,9 @@ jobs:
       - name: lakeFS GC keeps history at least as long as the database dumps live (else an older dump points at swept objects)
         run: |
           gc=$(grep -o '"default_retention_days":[0-9]*' scripts/lakefs-repo.sh | head -1 | cut -d: -f2)
-          dumps=$(awk '/resource "oci_objectstorage_object_lifecycle_policy" "backups"/,/^}/' terraform/oracle/backups.tf | grep -o 'time_amount *= *[0-9]*' | grep -o '[0-9]*$')
+          # only the DELETE rule counts (the bucket also has an ABORT rule for unfinished multipart uploads)
+          dumps=$(awk '/resource "oci_objectstorage_object_lifecycle_policy" "backups"/,/^}/' terraform/oracle/backups.tf \
+            | awk '/action *= *"DELETE"/{d=1} d && /time_amount/{print $NF; exit}')
           echo "GC retention: $gc days, dump lifecycle: $dumps days"
           [ -n "$gc" ] && [ -n "$dumps" ] && [ "$gc" -ge "$dumps" ] || { echo "GC retention must be >= the dump lifecycle"; exit 1; }
       - name: secrets (gitleaks, full history)
