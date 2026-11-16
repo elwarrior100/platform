@@ -41,7 +41,8 @@ resource "oci_core_instance" "platform" {
 
   lifecycle {
     # a newer Ubuntu image must not force the VM to be recreated (and its data lost)
-    ignore_changes = [source_details[0].source_id]
+    # cost-guard-ack is set by scripts/cost-guard-resume.sh (ADR-017), not by Terraform
+    ignore_changes = [source_details[0].source_id, freeform_tags["cost-guard-ack"]]
   }
 }
 

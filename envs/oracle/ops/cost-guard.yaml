@@ -1,0 +1,94 @@
+# Cost kill-switch (ADR-017). Zero cost is a hard requirement and the account is pay-as-you-go, so every hour:
+#   1. read the month's actual spend from the tenancy budget (Budgets API: free) and post it as cost_guard_spend
+#      (OCI alarms: spend at the limit, or no value for 3 h = the guard itself stopped; terraform/oracle/alarms.tf)
+#   2. if the spend reached THRESHOLD (EUR 1.00, Stephane's choice) and this month was not acknowledged:
+#      a. create a tenancy quota "cost-guard-zero" that zeroes every paid service family: nothing new can be created
+#      b. SOFTSTOP this VM (an orderly shutdown: k3s graceful shutdown, so lakeFS/SeaweedFS stop cleanly). With the VM
+#         off no job runs, so no Object Storage requests either.
+#   It NEVER deletes anything: data, buckets, volumes and backups stay as they are.
+# Billing lags 6-24 h, so this caps a runaway, it does not prevent the first cents (the budget emails do that).
+# To resume (from the Mac, with your own identity): scripts/cost-guard-resume.sh. It removes the quota, tags the VM
+# cost-guard-ack=<YYYY-MM> (read here from the instance metadata: the guard then only reports for that month) and
+# starts the VM. Next month the guard is armed again by itself.
+# Test without acting: kubectl -n ops create job --from=cronjob/cost-guard t1, then set DRY_RUN=true/THRESHOLD=0.001
+# on a copy (see the runbook); DRY_RUN prints what it would do.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cost-guard
+  namespace: ops
+spec:
+  schedule: "17 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      ttlSecondsAfterFinished: 3600
+      template:
+        metadata:
+          labels: {app: cost-guard}
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false   # it never talks to the Kubernetes API
+          priorityClassName: platform-data      # a guard must not be the pod that gets evicted
+          securityContext: {runAsNonRoot: true, seccompProfile: {type: RuntimeDefault}}
+          volumes: [{name: tmp, emptyDir: {sizeLimit: 64Mi}}]
+          containers:
+            - name: guard
+              image: ghcr.io/oracle/oci-cli:latest@sha256:2127c2f50ee1353fa78cbf538ab91ffaccc0d02b6d0b4144530cef6ee69709f5
+              env:
+                - {name: OCI_CLI_AUTH, value: instance_principal}
+                - {name: HOME, value: /tmp}
+                - {name: THRESHOLD, value: "1.00"}       # EUR in the month
+                - {name: DRY_RUN, value: "false"}
+                # service families zeroed by the quota: everything that supports quotas and can be paid for, except
+                # the account's own governance (compartments, identity, limits, regions...), so you can always
+                # recover. Checked against `oci limits definition list` (2026-11-16).
+                - name: FAMILIES
+                  value: >-
+                    compute compute-management block-storage object-storage filesystem load-balancer
+                    network-load-balancer-api network-firewall vcn vpn fast-connect database mysql postgresql nosql
+                    redis open-search oci-kafka streaming queue container-engine faas api-gateway kms ai-generative
+                    generative-ai-agent ai-language ai-speech ai-vision ai-document ai-anomaly-detection ai-forecasting
+                    data-science data-flow data-integration data-catalog big-data analytics integration goldengate
+                    devops email-delivery digital-assistant ocvp batch-computing waf waas logging
+              command: [sh, -ec]
+              args:
+                - |
+                  MD=$(python3 -c 'import json,urllib.request; d=json.load(urllib.request.urlopen(urllib.request.Request("http://169.254.169.254/opc/v2/instance/", headers={"Authorization": "Bearer Oracle"}))); print(d["compartmentId"], d["canonicalRegionName"], d["id"], d.get("freeformTags", {}).get("cost-guard-ack", "-"))')
+                  set -- $MD; COMP=$1; REGION=$2; INSTANCE=$3; ACK=$4   # the VM lives in the root compartment: COMP is the tenancy
+                  MONTH=$(date -u +%Y-%m)
+                  # the highest actual spend of the budgets on the tenancy (one: "Alertmax"); a failed read fails the run
+                  SPEND=$(oci budgets budget budget list --compartment-id "$COMP" --all \
+                    --query 'max_by(data, &"actual-spend")."actual-spend"' --raw-output)
+                  case "$SPEND" in ''|null|*[!0-9.]*) echo "no budget spend read: '$SPEND'" >&2; exit 1 ;; esac
+                  oci monitoring metric-data post --endpoint "https://telemetry-ingestion.$REGION.oraclecloud.com" \
+                    --metric-data "[{\"namespace\":\"platform_node\",\"compartmentId\":\"$COMP\",\"name\":\"cost_guard_spend\",\"dimensions\":{\"cluster\":\"oracle\"},\"datapoints\":[{\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"value\":$SPEND}]}]" >/dev/null
+                  echo "spend this month: EUR $SPEND (limit $THRESHOLD; acknowledged month: $ACK)"
+                  if ! python3 -c 'import sys; sys.exit(0 if float(sys.argv[1]) >= float(sys.argv[2]) else 1)' "$SPEND" "$THRESHOLD"; then
+                    echo "below the limit: nothing to do"; exit 0
+                  fi
+                  if [ "$ACK" = "$MONTH" ]; then
+                    echo "over the limit, but $MONTH was acknowledged (resumed by a person): only reporting"; exit 0
+                  fi
+                  STATEMENTS=$(python3 -c 'import json,sys; print(json.dumps(["zero %s quotas in tenancy" % f for f in sys.argv[1:]]))' $FAMILIES)
+                  if [ "$DRY_RUN" = true ]; then
+                    echo "DRY RUN: would create quota cost-guard-zero ($(echo $FAMILIES | wc -w) families) and SOFTSTOP $INSTANCE"; exit 0
+                  fi
+                  echo "OVER THE LIMIT: zeroing quotas and stopping the VM (no data is deleted)"
+                  EXISTING=$(oci limits quota list --compartment-id "$COMP" --name cost-guard-zero --query 'data[0].id' --raw-output 2>/dev/null || true)
+                  if [ -z "$EXISTING" ] || [ "$EXISTING" = null ]; then
+                    # a quota failure must not save the VM from stopping: log it and go on
+                    oci limits quota create --compartment-id "$COMP" --name cost-guard-zero \
+                      --description "Cost kill-switch (ADR-017): spend reached EUR $THRESHOLD in $MONTH. Remove with scripts/cost-guard-resume.sh" \
+                      --statements "$STATEMENTS" >/dev/null && echo "quota cost-guard-zero created" || echo "QUOTA CREATE FAILED (stopping the VM anyway)" >&2
+                  else
+                    echo "quota cost-guard-zero already present"
+                  fi
+                  oci compute instance action --instance-id "$INSTANCE" --action SOFTSTOP >/dev/null
+                  echo "SOFTSTOP requested for this VM"
+              volumeMounts: [{name: tmp, mountPath: /tmp}]
+              securityContext: {runAsUser: 1000, allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}, readOnlyRootFilesystem: true}
+              resources: {requests: {cpu: 20m, memory: 64Mi}, limits: {memory: 256Mi}}
