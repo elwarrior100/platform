@@ -73,6 +73,12 @@ spec:
                 secretKeyRef: {name: seaweedfs-auth, key: S3_SECRET_KEY}
             - name: LAKEFS_EMAIL_SUBSCRIPTION_ENABLED
               value: "false"
+            # Memory (2026-11-16): in-memory cache of committed metadata (sstables), default 400 MB per reader; 100 MB is
+            # plenty for this lake (the on-disk cache stays). Idle Postgres connections 25 -> 5 (open max stays 25).
+            - name: LAKEFS_COMMITTED_SSTABLE_MEMORY_CACHE_SIZE_BYTES
+              value: "100000000"
+            - name: LAKEFS_DATABASE_POSTGRES_MAX_IDLE_CONNECTIONS
+              value: "5"
             - name: LAKEFS_STATS_ENABLED
               value: "false"
           readinessProbe:
