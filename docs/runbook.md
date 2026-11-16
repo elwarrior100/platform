@@ -44,10 +44,16 @@ Seen on 2026-11-14 after the graceful-shutdown reboot test. Check newer Airflow 
 |---|---|
 | VM not reporting | `ssh ubuntu@platform-oracle`; if no answer, OCI console: instance state, serial console |
 | CPU > 90% / memory > 92% | Grafana (`http://grafana.100.108.9.15.sslip.io`, or `./scripts/ui.sh` :3000), "Kubernetes / Compute Resources / Namespace"; `kubectl top pods -A` |
-| no successful backup in 26 h | `kubectl -n backup get jobs`; logs of the newest `pg-backup` job |
-| no successful lake copy in 26 h | `kubectl -n backup get jobs`; logs of the newest `lake-sync` job (it refuses to overwrite: an "immutable" error means an object changed, which lakeFS objects never should) |
+| no successful backup in 24 h | `kubectl -n backup get jobs`; logs of the newest `pg-backup` job |
+| no successful lake copy in 24 h | `kubectl -n backup get jobs`; logs of the newest `lake-sync` job (a listing error of the copy fails the night on purpose, instead of a silent full bundle) |
+| lake restore drill missing / failed | `kubectl -n ops get jobs`; logs of the newest `lake-restore-drill` job (containers `restore-objects`, `check`) |
+| lakeFS GC failed / check missing | `kubectl -n data get jobs`; logs of the newest `lakefs-gc` job; `kubectl -n ops logs` of the last gc-freshness job |
 | silver not updated for 3 h | Airflow `silver_hourly` runs (a G2 fail is expected for incomplete hours); writer logs; `kubectl -n ops logs` of the last freshness job |
-| bucket above N GB | `oci os object list` on the bucket; dumps expire after 14 days, the lake copy only grows |
+| disk above 80% / disk check missing | `ssh` the VM: `df -h /`, `sudo k3s crictl rmi --prune`; `kubectl -n ops get jobs` (node-health) |
+| Prometheus alerts firing | which ones: lines `firing:` in the logs of the newest `ops/node-health` job; then that alert's runbook link in Prometheus /alerts |
+| bucket above N GB / all Object Storage above 15 GB | `oci os object list` on the bucket; dumps expire after 14 days, lake bundles and catalogs after 9 days: growth here means the lake itself grew (retention/GC, ADR-015) |
+| Object Storage requests above 1,500 in a day | who made them: the lake copy should make ~6 a night, the drill a few a day; a manual prune or restore is expected to trip it (ADR-016) |
+| cost guard: COST LIMIT / not running | section "Cost kill-switch tripped" below; "not running": `kubectl -n ops logs` of the newest `cost-guard` job |
 
 ## A new job pod cannot connect for its first seconds
 kube-router adds a new pod to the network-policy allow-lists a few seconds after it starts. Jobs must retry their
@@ -58,10 +64,14 @@ It is drilled every day at 04:15 UTC (`ops/lake-restore-drill`: rebuilds lakeFS 
 copy inside one throw-away pod, compares the MD5 of every object on `main`; alarm after 2 days without a pass).
 Run it now, without touching anything live: `KUBECONFIG=~/.kube/oracle.yaml ./scripts/lake-restore-test.sh`. The real restore:
 1. Stop writers: scale `ingest/writer` and pause the Airflow DAGs.
-2. Objects: `rclone copy oci:platform-lake-backup lake:lake` (same configuration as the lake-sync job, reversed),
-   from a pod in the `backup` namespace labelled `app: lake-sync` (SeaweedFS only accepts the lake copy and lakeFS).
-   The backup key is read-only (`backup-seaweedfs-reader`): for the reverse copy use the admin key of
-   `data-seaweedfs-auth`, in a temporary Secret deleted afterwards.
+2. Objects: the copy is in bundles (ADR-016), not object by object. Take the first catalog in
+   `platform-lake-backup/catalog/` written AFTER the dump you restore (the drill uses the newest, always after the
+   02:30 dump); its second column lists the bundles; `rclone cat` each bundle `| tar -xz` into a staging volume, then
+   `rclone move` the staging volume into `lake:lake`. The exact commands are the `restore-objects` container of
+   `envs/oracle/ops/lake-restore-drill.yaml` (it does this daily into a scratch SeaweedFS). Run it from a pod in the
+   `backup` namespace labelled `app: lake-sync` (SeaweedFS only accepts the lake copy and lakeFS), with the admin key
+   of `data-seaweedfs-auth` in a temporary Secret deleted afterwards (the backup key is read-only). Size the staging
+   volume at about the size of the lake (the drill uses 20 Gi).
 3. Metadata: restore the `lakefs` database from the newest complete dump (see below), then restart lakeFS.
 4. Check: list `main` in lakeFS and read a bronze and a silver file; reconcile the spool (project: tests/phase3/run.sh).
 
@@ -119,16 +129,14 @@ k3s exited ("Transaction commit failed"); systemd restarted it and everything re
 For changes that restart several heavy workloads, promote one application at a time (or refresh them one by one) and
 wait for the load (`uptime` on the VM) to fall below ~3 before the next.
 
-## Monthly: prune the lake copy (a person, from the Mac)
-The lake copy is in bundles (ADR-016): a full one on the 1st, small incremental ones nightly, a catalog each time.
-The VM can never delete there (that makes the copy tamper-proof), so a person prunes it, early in the month:
-```
-./scripts/lake-backup-prune.sh            # dry run: what would go, and how many requests it costs
-./scripts/lake-backup-prune.sh --apply    # asks you to type the count
-```
-It keeps the last two monthly cycles and removes older bundles and catalogs, plus the legacy object-by-object copy
-once a full bundle is 7 days old. Every deletion is one request (50,000 free a month; `--max` caps a run). The
-`objectstorage_requests_high` alarm warns when a day goes over 1,500 requests; `storage_high` when the copy passes 12 GB.
+## The lake copy cleans itself (no monthly prune)
+The lake copy is in bundles (ADR-016): a full one when the newest full is 7 days old, small incremental ones nightly,
+a catalog each time. The VM can never delete there (that makes the copy tamper-proof); Object Storage itself deletes
+`bundles/` and `catalog/` older than 9 days (lifecycle rule in terraform/oracle/backups.tf), so a restore (newest full
++ the incrementals after it) always finds what it needs, and the copy stays at about 2.5x the lake.
+`./scripts/lake-backup-prune.sh` remains for an exceptional manual prune only (dry run by default; every deletion is
+one request, `--max` caps a run). The `objectstorage_requests_high` alarm warns when a day goes over 1,500 requests;
+`storage_high` when the copy passes 12 GB, `storage_total_high` when all Object Storage passes 15 GB.
 
 ## HTTPS names (Tailscale Services on the VM)
 `https://<airflow|grafana|argocd|lakefs|openmetadata>.taila669aa.ts.net`: one Tailscale Service per UI, served by the
@@ -183,10 +191,12 @@ Testing the guard without acting: render the CronJob as a Job with THRESHOLD=0.0
 | Any charge on the tenancy | budget alert at EUR 0.01 actual, EUR 0.05 forecast (budget.tf) |
 | A runaway charge | ops/cost-guard hourly: at EUR 1.00 in the month, zero quotas + soft-stop the VM, never deletes (ADR-017); alarms when tripped and when the guard stops |
 | Object Storage requests (50k free/month) | lake copy in bundles (ADR-016); alarm above 1,500 requests in a day |
-| Object Storage space (20 GB free) | alarms at 12 GB (lake copy) and 5 GB (dumps); dumps expire after 14 days; prune by bundle cycles |
+| Object Storage space (20 GB free) | alarms at 12 GB (lake copy), 5 GB (dumps) and 15 GB (all buckets); dumps expire after 14 days, lake bundles and catalogs after 9 days |
+| Spool (Postgres) growth | ingest/spool-retention daily: events of exported batches older than 7 days, rejected ones older than 30 |
 | VM disk | ops/node-health every 30 min, alarm above 80% and when the check stops; kubelet image GC from 70% and after 14 days unused; kubelet evicts pods at 95% |
 | VM memory | OCI MemoryUtilization alarm above 92%; kubelet eviction at 600Mi (soft) / 300Mi (hard), 60 s per pod |
 | CPU starvation of k3s | 250m CPU and 768Mi reserved for k3s/OS; CPU limits on the heavy JVMs and Prometheus |
 | Lake growth | bronze 15 days, weekly lakeFS GC (heartbeat + alarm), branch pruning |
 | Prometheus / logs | retention 2 days / 1.5 GB; Airflow log groomer; journald ~80 MB |
-| A job silently stopped | heartbeats with absence alarms: backup, lake copy, drill, silver freshness, GC, disk |
+| A job silently stopped | heartbeats with absence alarms: backup, lake copy, drill, silver freshness, GC, disk, cost guard |
+| A failed Job, crash loop, full volume... | Prometheus alert rules counted by ops/node-health (no Alertmanager): OCI alarm when any warning/critical fires |

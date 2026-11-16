@@ -26,7 +26,7 @@ resource "oci_monitoring_alarm" "cost_guard_tripped" {
   pending_duration             = "PT1M"
   is_enabled                   = true
   destinations                 = [oci_ons_notification_topic.alerts.id]
-  body                         = "The month's Oracle spend reached EUR 1.00: the cost guard zeroed the tenancy quotas (quota cost-guard-zero) and soft-stopped the VM. Nothing was deleted. Find the cause in Cost Analysis by service, then resume from the Mac: scripts/cost-guard-resume.sh (runbook: cost kill-switch)."
+  body                         = "The month's Oracle spend is at EUR 1.00 or more. If the VM was not resumed this month, the cost guard zeroed the tenancy quotas (quota cost-guard-zero) and soft-stopped it; nothing was deleted. Find the cause in Cost Analysis by service, then resume from the Mac: scripts/cost-guard-resume.sh (runbook: cost kill-switch). If you already resumed this month (tag cost-guard-ack), this repeats daily until the month ends, and the guard stops the VM again at the resume spend + EUR 1.00."
   repeat_notification_duration = "PT24H"
 }
 

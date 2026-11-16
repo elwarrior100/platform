@@ -1,6 +1,8 @@
 # Disk watch for the VM (OCI does not measure the filesystem of an instance). Every 30 minutes: ask Prometheus (its
 # node-exporter sees the host disk) how full "/" is, and post node_disk_used_pct to OCI Monitoring. OCI alarms: above
 # 80%, or no value for 3 hours (terraform/oracle/alarms.tf). Memory is already watched by OCI (MemoryUtilization).
+# It also posts prometheus_alerts_firing: how many Prometheus alert rules (warning/critical) are firing, since there is
+# no Alertmanager; an OCI alarm emails when it is above 0 (the job log lists which).
 # It may reach Prometheus and OCI only (its own NetworkPolicy in networkpolicy.yaml).
 apiVersion: batch/v1
 kind: CronJob
@@ -31,26 +33,38 @@ spec:
               command: [sh, -ec]
               args:
                 - |
-                  PCT=$(python3 - <<'PY'
-                  import json, time, urllib.parse, urllib.request
-                  q = '100*(1-node_filesystem_avail_bytes{mountpoint="/"}/node_filesystem_size_bytes{mountpoint="/"})'
-                  url = "http://monitoring-kube-prometheus-prometheus.monitoring.svc.cluster.local:9090/api/v1/query?" + urllib.parse.urlencode({"query": q})
-                  for attempt in range(30):   # network policies reach a new pod a few seconds after it starts
-                      try:
-                          r = json.load(urllib.request.urlopen(url, timeout=10))["data"]["result"]; break
-                      except OSError:
-                          time.sleep(2)
-                  else:
+                  OUT=$(python3 - <<'PY'
+                  import json, sys, time, urllib.parse, urllib.request
+                  BASE = "http://monitoring-kube-prometheus-prometheus.monitoring.svc.cluster.local:9090/api/v1/"
+                  def get(path):
+                      for attempt in range(30):   # network policies reach a new pod a few seconds after it starts
+                          try:
+                              return json.load(urllib.request.urlopen(BASE + path, timeout=10))["data"]
+                          except OSError:
+                              time.sleep(2)
                       raise SystemExit("Prometheus unreachable")
-                  print(round(max(float(x["value"][1]) for x in r), 1))
+                  q = '100*(1-node_filesystem_avail_bytes{mountpoint="/"}/node_filesystem_size_bytes{mountpoint="/"})'
+                  pct = round(max(float(x["value"][1]) for x in get("query?" + urllib.parse.urlencode({"query": q}))["result"]), 1)
+                  # Prometheus alert rules (220, kube-prometheus) have no Alertmanager here: count the firing warning and
+                  # critical ones, so an OCI alarm reaches the inbox (a failed Job, a crash loop, a full PVC...). Left out:
+                  # Watchdog (always firing by design) and the two about the absent Alertmanager.
+                  ignore = {"Watchdog", "InfoInhibitor", "PrometheusNotConnectedToAlertmanagers", "PrometheusErrorSendingAlertsToAnyAlertmanager"}
+                  firing = [a["labels"] for a in get("alerts")["alerts"] if a["state"] == "firing"
+                            and a["labels"].get("severity") in ("warning", "critical") and a["labels"]["alertname"] not in ignore]
+                  for l in firing:
+                      print("firing:", l["alertname"], l.get("namespace", ""), l.get("pod", "") or l.get("job_name", ""), file=sys.stderr)
+                  print(pct, len(firing))
                   PY
                   )
-                  echo "disk / used: $PCT%"
+                  PCT=${OUT% *}; ALERTS=${OUT#* }
+                  echo "disk / used: $PCT%; Prometheus alerts firing: $ALERTS"
                   MD=$(python3 -c 'import json,urllib.request; d=json.load(urllib.request.urlopen(urllib.request.Request("http://169.254.169.254/opc/v2/instance/", headers={"Authorization": "Bearer Oracle"}))); print(d["compartmentId"], d["canonicalRegionName"])')
                   COMP=${MD% *}; REGION=${MD#* }
                   oci monitoring metric-data post --endpoint "https://telemetry-ingestion.$REGION.oraclecloud.com" \
                     --metric-data "[{\"namespace\":\"platform_node\",\"compartmentId\":\"$COMP\",\"name\":\"node_disk_used_pct\",\"dimensions\":{\"cluster\":\"oracle\"},\"datapoints\":[{\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"value\":$PCT}]}]" >/dev/null
-                  echo "posted node_disk_used_pct=$PCT"
+                  oci monitoring metric-data post --endpoint "https://telemetry-ingestion.$REGION.oraclecloud.com" \
+                    --metric-data "[{\"namespace\":\"platform_node\",\"compartmentId\":\"$COMP\",\"name\":\"prometheus_alerts_firing\",\"dimensions\":{\"cluster\":\"oracle\"},\"datapoints\":[{\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"value\":$ALERTS}]}]" >/dev/null
+                  echo "posted node_disk_used_pct=$PCT prometheus_alerts_firing=$ALERTS"
               volumeMounts: [{name: tmp, mountPath: /tmp}]
               securityContext: {runAsUser: 1000, allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}, readOnlyRootFilesystem: true}
               resources: {requests: {cpu: 20m, memory: 64Mi}, limits: {memory: 256Mi}}

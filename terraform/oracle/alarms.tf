@@ -255,3 +255,20 @@ resource "oci_monitoring_alarm" "storage_high" {
   destinations          = [oci_ons_notification_topic.alerts.id]
   body                  = "Object Storage bucket ${each.value.bucket} is above ${each.value.gb} GB. Always Free includes 20 GB in total."
 }
+
+# Prometheus alert rules (kube-prometheus) have no Alertmanager on the VM: ops/node-health counts the firing
+# warning/critical ones every 30 min and posts prometheus_alerts_firing (Watchdog and the "no Alertmanager" alerts are
+# left out). Above 0 for two checks in a row = something in the cluster needs a look.
+resource "oci_monitoring_alarm" "prometheus_alerts" {
+  compartment_id               = var.compartment_id
+  metric_compartment_id        = var.compartment_id
+  display_name                 = "platform: Prometheus alerts firing in the cluster"
+  namespace                    = "platform_node"
+  query                        = "prometheus_alerts_firing[1h].min() > 0"
+  severity                     = "WARNING"
+  pending_duration             = "PT30M"
+  is_enabled                   = true
+  destinations                 = [oci_ons_notification_topic.alerts.id]
+  body                         = "Prometheus has warning/critical alerts firing (a failed Job, a crash loop, a full volume...). Which ones: kubectl -n ops logs job/<latest node-health> (lines 'firing:'), or Prometheus /alerts via Grafana."
+  repeat_notification_duration = "PT24H"
+}

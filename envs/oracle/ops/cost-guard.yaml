@@ -1,15 +1,16 @@
 # Cost kill-switch (ADR-017). Zero cost is a hard requirement and the account is pay-as-you-go, so every hour:
 #   1. read the month's actual spend from the tenancy budget (Budgets API: free) and post it as cost_guard_spend
 #      (OCI alarms: spend at the limit, or no value for 3 h = the guard itself stopped; terraform/oracle/alarms.tf)
-#   2. if the spend reached THRESHOLD (EUR 1.00, Stephane's choice) and this month was not acknowledged:
+#   2. if the spend reached the limit: THRESHOLD (EUR 1.00, Stephane's choice), or in a month a person resumed,
+#      the spend at resume + THRESHOLD:
 #      a. create a tenancy quota "cost-guard-zero" that zeroes every paid service family: nothing new can be created
 #      b. SOFTSTOP this VM (an orderly shutdown: k3s graceful shutdown, so lakeFS/SeaweedFS stop cleanly). With the VM
 #         off no job runs, so no Object Storage requests either.
 #   It NEVER deletes anything: data, buckets, volumes and backups stay as they are.
 # Billing lags 6-24 h, so this caps a runaway, it does not prevent the first cents (the budget emails do that).
 # To resume (from the Mac, with your own identity): scripts/cost-guard-resume.sh. It removes the quota, tags the VM
-# cost-guard-ack=<YYYY-MM> (read here from the instance metadata: the guard then only reports for that month) and
-# starts the VM. Next month the guard is armed again by itself.
+# cost-guard-ack=<YYYY-MM>:<spend> (read here from the instance metadata) and
+# starts the VM. For the rest of that month the limit is the spend at resume + THRESHOLD; next month, THRESHOLD again.
 # Test without acting: kubectl -n ops create job --from=cronjob/cost-guard t1, then set DRY_RUN=true/THRESHOLD=0.001
 # on a copy (see the runbook); DRY_RUN prints what it would do.
 apiVersion: batch/v1
@@ -59,19 +60,28 @@ spec:
                 - |
                   MD=$(python3 -c 'import json,urllib.request; d=json.load(urllib.request.urlopen(urllib.request.Request("http://169.254.169.254/opc/v2/instance/", headers={"Authorization": "Bearer Oracle"}))); print(d["compartmentId"], d["canonicalRegionName"], d["id"], d.get("freeformTags", {}).get("cost-guard-ack", "-"))')
                   set -- $MD; COMP=$1; REGION=$2; INSTANCE=$3; ACK=$4   # the VM lives in the root compartment: COMP is the tenancy
+                  # ACK is "<YYYY-MM>:<spend when resumed>" (scripts/cost-guard-resume.sh), or "-"
                   MONTH=$(date -u +%Y-%m)
                   # the highest actual spend of the budgets on the tenancy (one: "Alertmax"); a failed read fails the run
                   SPEND=$(oci budgets budget budget list --compartment-id "$COMP" --all \
                     --query 'max_by(data, &"actual-spend")."actual-spend"' --raw-output)
-                  case "$SPEND" in ''|null|*[!0-9.]*) echo "no budget spend read: '$SPEND'" >&2; exit 1 ;; esac
+                  # any number Python reads (a tiny spend can print as 3.4e-07); anything else fails the run (and the
+                  # "cost guard not running" alarm fires)
+                  SPEND=$(python3 -c 'import sys; print("%.6f" % float(sys.argv[1]))' "$SPEND") || { echo "no budget spend read: '$SPEND'" >&2; exit 1; }
+                  # the heartbeat must never keep the guard from deciding: a failed post only logs
                   oci monitoring metric-data post --endpoint "https://telemetry-ingestion.$REGION.oraclecloud.com" \
-                    --metric-data "[{\"namespace\":\"platform_node\",\"compartmentId\":\"$COMP\",\"name\":\"cost_guard_spend\",\"dimensions\":{\"cluster\":\"oracle\"},\"datapoints\":[{\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"value\":$SPEND}]}]" >/dev/null
+                    --metric-data "[{\"namespace\":\"platform_node\",\"compartmentId\":\"$COMP\",\"name\":\"cost_guard_spend\",\"dimensions\":{\"cluster\":\"oracle\"},\"datapoints\":[{\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"value\":$SPEND}]}]" >/dev/null \
+                    || echo "WARNING: could not post cost_guard_spend (deciding anyway)" >&2
                   echo "spend this month: EUR $SPEND (limit $THRESHOLD; acknowledged month: $ACK)"
-                  if ! python3 -c 'import sys; sys.exit(0 if float(sys.argv[1]) >= float(sys.argv[2]) else 1)' "$SPEND" "$THRESHOLD"; then
+                  # the limit is THRESHOLD; in a month a person resumed, it is the spend at that moment + THRESHOLD
+                  # (so a resumed month still has a ceiling)
+                  LIMIT=$(python3 -c 'import sys
+                  spend, thr, ack, month = float(sys.argv[1]), float(sys.argv[2]), sys.argv[3], sys.argv[4]
+                  m, _, base = ack.partition(":")
+                  print("%.2f" % ((float(base or 0) if m == month else 0) + thr))' "$SPEND" "$THRESHOLD" "$ACK" "$MONTH")
+                  [ "$LIMIT" = "$THRESHOLD" ] || echo "month resumed by a person: limit raised to EUR $LIMIT (spend at resume + $THRESHOLD)"
+                  if ! python3 -c 'import sys; sys.exit(0 if float(sys.argv[1]) >= float(sys.argv[2]) else 1)' "$SPEND" "$LIMIT"; then
                     echo "below the limit: nothing to do"; exit 0
-                  fi
-                  if [ "$ACK" = "$MONTH" ]; then
-                    echo "over the limit, but $MONTH was acknowledged (resumed by a person): only reporting"; exit 0
                   fi
                   STATEMENTS=$(python3 -c 'import json,sys; print(json.dumps(["zero %s quotas in tenancy" % f for f in sys.argv[1:]]))' $FAMILIES)
                   if [ "$DRY_RUN" = true ]; then

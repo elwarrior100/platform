@@ -100,7 +100,7 @@ spec:
                   . /work/oci.env
                   B=oci:platform-lake-backup
                   # bundles (ADR-016): the newest catalog says which bundles hold the copied objects; fetch only those
-                  # (1 request each, a month at most since the last full one), unpack, load into the scratch SeaweedFS
+                  # (1 request each, a week at most since the last full one), unpack, load into the scratch SeaweedFS
                   CAT=$(rclone lsf "$B/catalog/" | sort | tail -1)
                   [ -n "$CAT" ] || { echo "no catalog in the lake copy" >&2; exit 1; }
                   rclone cat "$B/catalog/$CAT" | gunzip | cut -f2 | sort -u > /work/bundles.txt
