@@ -35,8 +35,14 @@ echo "VM state: $STATE"
 # freeform tags are replaced as a whole: keep the others and set only cost-guard-ack
 TAGS=$(oci compute instance get --instance-id "$INSTANCE" --query 'data."freeform-tags"' --output json \
   | python3 -c 'import json,sys; t=json.load(sys.stdin) or {}; t["cost-guard-ack"]=sys.argv[1]; print(json.dumps(t))' "$MONTH")
-if ask "tag the VM cost-guard-ack=$MONTH (the guard only reports until the month ends)?"; then
-  oci compute instance update --instance-id "$INSTANCE" --freeform-tags "$TAGS" --force >/dev/null; echo "  tagged"
+# only when the spend is really over the limit: otherwise (a test, a false trip) the tag would disarm the guard for
+# the rest of the month for nothing
+if python3 -c 'import sys; sys.exit(0 if float(sys.argv[1]) >= 1.0 else 1)' "$SPEND"; then
+  if ask "tag the VM cost-guard-ack=$MONTH (the guard only reports until the month ends)?"; then
+    oci compute instance update --instance-id "$INSTANCE" --freeform-tags "$TAGS" --force >/dev/null; echo "  tagged"
+  fi
+else
+  echo "spend under EUR 1.00: no cost-guard-ack tag needed (the guard stays armed)"
 fi
 
 if [ "$STATE" = STOPPED ] && ask "start the VM?"; then
