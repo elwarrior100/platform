@@ -1,0 +1,58 @@
+# Spool retention (zero cost, 2026-11-16): the spool kept every event forever (~370 MB a day in Postgres), so the
+# nightly dumps grew without limit towards the 20 GB of free Object Storage. Every day at 02:00 (before the 02:30 dump):
+#   - events of batches already EXPORTED to bronze and older than 7 days are deleted (they live on in bronze, 15 days,
+#     and in the lake copy);
+#   - events of REJECTED batches are kept 30 days, for the post-mortem, then deleted;
+#   - batches left with no events are deleted. Pending batches are never touched.
+# Postgres reuses the freed space (autovacuum); the dump only contains live rows, so it shrinks at once.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: spool-retention
+  namespace: ingest
+spec:
+  schedule: "0 2 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      ttlSecondsAfterFinished: 86400
+      template:
+        metadata:
+          labels: {app: spool-retention}
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext: {runAsNonRoot: true, seccompProfile: {type: RuntimeDefault}}
+          volumes: [{name: tmp, emptyDir: {sizeLimit: 64Mi}}]
+          containers:
+            - name: purge
+              image: timescale/timescaledb:latest-pg17@sha256:6a6b7d7a346d7c6be03a310c240706f3bbc6d7adbdf3fbc07823570b34337f5e
+              env:
+                - {name: DATABASE_URL, valueFrom: {secretKeyRef: {name: ingest-db, key: DATABASE_URL}}}
+              command: [sh, -ec]
+              args:
+                - |
+                  for i in $(seq 1 30); do pg_isready -d "$DATABASE_URL" -q && break; sleep 2; done   # network policies reach a new pod a few seconds after it starts
+                  psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -q <<'SQL'
+                  \echo events before:
+                  SELECT count(*) FROM events;
+                  DELETE FROM events e USING batches b
+                   WHERE e.batch_id = b.batch_id AND b.state = 'exported'
+                     AND e.ingest_ts < (extract(epoch from now() - interval '7 days') * 1000000)::bigint;
+                  DELETE FROM events e USING batches b
+                   WHERE e.batch_id = b.batch_id AND b.state = 'rejected'
+                     AND e.ingest_ts < (extract(epoch from now() - interval '30 days') * 1000000)::bigint;
+                  DELETE FROM batches b
+                   WHERE b.state IN ('exported', 'rejected')
+                     AND NOT EXISTS (SELECT 1 FROM events e WHERE e.batch_id = b.batch_id);
+                  \echo events after:
+                  SELECT count(*) FROM events;
+                  \echo spool size:
+                  SELECT pg_size_pretty(pg_total_relation_size('events'));
+                  SQL
+              volumeMounts: [{name: tmp, mountPath: /tmp}]
+              securityContext: {runAsUser: 70, allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}, readOnlyRootFilesystem: true}
+              resources: {requests: {cpu: 20m, memory: 64Mi}, limits: {memory: 256Mi}}
