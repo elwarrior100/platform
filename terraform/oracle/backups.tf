@@ -86,6 +86,19 @@ resource "oci_objectstorage_object_lifecycle_policy" "lake" {
     time_unit   = "DAYS"
     target      = "multipart-uploads"
   }
+  # The copy keeps ~9 days (ADR-016): a full bundle every week, so the newest full and every incremental after it are
+  # always younger than 9 days. Deleted by Object Storage itself (the VM still cannot delete), no manual prune needed.
+  rules {
+    name        = "delete-bundles-after-9-days"
+    action      = "DELETE"
+    is_enabled  = true
+    time_amount = 9
+    time_unit   = "DAYS"
+    target      = "objects"
+    object_name_filter {
+      inclusion_prefixes = ["bundles/", "catalog/"]
+    }
+  }
   depends_on = [oci_identity_policy.backups]
 }
 

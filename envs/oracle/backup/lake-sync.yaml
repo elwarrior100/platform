@@ -4,11 +4,11 @@
 # month. Now, each night:
 #   - list the lake (free: it is in the cluster) and read the newest catalog (catalog/<time>.txt.gz: one line per
 #     object already copied, "key<TAB>bundle")
-#   - pack only the new objects into bundles/<time>-incr.tar.gz; on the 1st of the month pack EVERYTHING into
-#     bundles/<time>-full.tar.gz (so a restore never needs more than a month of bundles)
+#   - pack only the new objects into bundles/<time>-incr.tar.gz; once a week pack EVERYTHING into
+#     bundles/<time>-full.tar.gz (so a restore never needs more than a week of bundles)
 #   - write the new catalog (previous lines + the new ones; after a full, only the full's)
-# About 4 requests a night. Names are timestamps: nothing is ever overwritten, and the VM may neither overwrite nor
-# delete there. On success it posts lake_sync_success (OCI alarm when missing). Runs after pg-backup (02:30).
+# About 6 requests a night. Names are timestamps: nothing is ever overwritten, and the VM may neither overwrite nor
+# delete there; Object Storage itself deletes bundles and catalogs after 9 days (terraform/oracle/backups.tf). On success it posts lake_sync_success (OCI alarm when missing). Runs after pg-backup (02:30).
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -74,10 +74,11 @@ spec:
                   rclone lsf "$B/bundles/" --include '*-full.tar.gz' > fulls.txt            # 1 request
                   LATEST=$(sort catalogs.txt | tail -1)
                   NEWEST_FULL=$(sort fulls.txt | tail -1 | cut -c1-8)                        # YYYYMMDD
-                  MONTH_AGO=$(date -u -d "@$(( $(date +%s) - 31 * 86400 ))" +%Y%m%d)
-                  # a full on the 1st, or when the newest full is over 31 days old (the VM was down on the 1st), or the
-                  # very first time (the listing worked and is empty)
-                  if [ "$(date -u +%d)" = 01 ] || [ -z "$LATEST" ] || [ -z "$NEWEST_FULL" ] || [ "$NEWEST_FULL" \< "$MONTH_AGO" ]; then
+                  WEEK_AGO=$(date -u -d "@$(( $(date +%s) - 7 * 86400 ))" +%Y%m%d)
+                  # a full every week (when the newest full is 7 days old or more), or the very first time (the
+                  # listing worked and is empty). Object Storage deletes bundles and catalogs after 9 days, so a
+                  # restore (newest full + the incrementals after it) always finds everything it needs
+                  if [ -z "$LATEST" ] || [ -z "$NEWEST_FULL" ] || ! [ "$NEWEST_FULL" \> "$WEEK_AGO" ]; then
                     MODE=full; : > catalog.txt
                   else
                     MODE=incr; rclone cat "$B/catalog/$LATEST" | gunzip > catalog.txt            # 1 request

@@ -222,7 +222,7 @@ resource "oci_monitoring_alarm" "storage_total_high" {
   is_enabled                   = true
   destinations                 = [oci_ons_notification_topic.alerts.id]
   body                         = "All buckets together are above 15 GB (Always Free: 20 GB in total). Check the dumps (14 days kept), the lake bundles (prune) and the lake size."
-  repeat_notification_duration = "P1D"
+  repeat_notification_duration = "PT24H"
 }
 
 # Always Free includes 50,000 Object Storage requests a month; beyond that each 10k costs money. The lake copy once
