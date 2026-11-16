@@ -20,6 +20,9 @@ locals {
   vm = "resourceId = \"${oci_core_instance.platform.id}\""
 }
 
+# "No heartbeat" alarms use <metric>[<window>].absent(): absent over the WHOLE window ([1d] = the last 24 h, [3h]).
+# Not <metric>[1h].absent(26h): OCI evaluates that hour by hour, so it fired one hour after every heartbeat
+# (2026-11-14/16: false alerts after each backup).
 resource "oci_monitoring_alarm" "vm_down" {
   compartment_id               = var.compartment_id
   metric_compartment_id        = var.compartment_id
@@ -65,14 +68,14 @@ resource "oci_monitoring_alarm" "memory_high" {
 resource "oci_monitoring_alarm" "backup_missing" {
   compartment_id               = var.compartment_id
   metric_compartment_id        = var.compartment_id
-  display_name                 = "platform: no successful backup in 26 h"
+  display_name                 = "platform: no successful backup in 24 h"
   namespace                    = "platform_backup"
-  query                        = "backup_success[1h].absent(26h)"
+  query                        = "backup_success[1d].absent()"
   severity                     = "CRITICAL"
-  pending_duration             = "PT5M"
+  pending_duration             = "PT1H"
   is_enabled                   = true
   destinations                 = [oci_ons_notification_topic.alerts.id]
-  body                         = "The nightly database backup has not succeeded for 26 hours. Check: kubectl -n backup get jobs; logs of the latest pg-backup job."
+  body                         = "The nightly database backup has not succeeded in the last 24 hours. Check: kubectl -n backup get jobs; logs of the latest pg-backup job."
   repeat_notification_duration = "PT12H"
 }
 
@@ -93,7 +96,7 @@ resource "oci_monitoring_alarm" "silver_stale" {
   metric_compartment_id        = var.compartment_id
   display_name                 = "platform: silver not updated for 3 h"
   namespace                    = "platform_pipeline"
-  query                        = "silver_fresh[1h].absent(3h)"
+  query                        = "silver_fresh[3h].absent()"
   severity                     = "WARNING"
   pending_duration             = "PT5M"
   is_enabled                   = true
@@ -106,14 +109,14 @@ resource "oci_monitoring_alarm" "silver_stale" {
 resource "oci_monitoring_alarm" "lake_sync_missing" {
   compartment_id               = var.compartment_id
   metric_compartment_id        = var.compartment_id
-  display_name                 = "platform: no successful lake copy in 26 h"
+  display_name                 = "platform: no successful lake copy in 24 h"
   namespace                    = "platform_backup"
-  query                        = "lake_sync_success[1h].absent(26h)"
+  query                        = "lake_sync_success[1d].absent()"
   severity                     = "CRITICAL"
-  pending_duration             = "PT5M"
+  pending_duration             = "PT1H"
   is_enabled                   = true
   destinations                 = [oci_ons_notification_topic.alerts.id]
-  body                         = "The nightly copy of the lake objects has not succeeded for 26 hours. Check: kubectl -n backup get jobs; logs of the latest lake-sync job."
+  body                         = "The nightly copy of the lake objects has not succeeded in the last 24 hours. Check: kubectl -n backup get jobs; logs of the latest lake-sync job."
   repeat_notification_duration = "PT12H"
 }
 
@@ -137,14 +140,14 @@ resource "oci_monitoring_alarm" "lake_drill_failed" {
 resource "oci_monitoring_alarm" "lake_drill_missing" {
   compartment_id               = var.compartment_id
   metric_compartment_id        = var.compartment_id
-  display_name                 = "platform: lake restore drill not passed in 2 days"
+  display_name                 = "platform: lake restore drill not run in 24 h"
   namespace                    = "platform_backup"
-  query                        = "lake_drill_success[1h].absent(2d)"
+  query                        = "lake_drill_success[1d].absent()"
   severity                     = "WARNING"
-  pending_duration             = "PT5M"
+  pending_duration             = "PT1H"
   is_enabled                   = true
   destinations                 = [oci_ons_notification_topic.alerts.id]
-  body                         = "The daily lake restore drill (ops/lake-restore-drill, 04:15 UTC) has not passed for 2 days. Run ./scripts/lake-restore-test.sh and read its output."
+  body                         = "The daily lake restore drill (ops/lake-restore-drill, 04:15 UTC) has not posted a result in the last 24 hours. Run ./scripts/lake-restore-test.sh and read its output."
   repeat_notification_duration = "PT24H"
 }
 
@@ -169,12 +172,12 @@ resource "oci_monitoring_alarm" "lake_gc_check_missing" {
   metric_compartment_id        = var.compartment_id
   display_name                 = "platform: lakeFS GC check not running"
   namespace                    = "platform_backup"
-  query                        = "lake_gc_success[1h].absent(2d)"
+  query                        = "lake_gc_success[1d].absent()"
   severity                     = "WARNING"
-  pending_duration             = "PT5M"
+  pending_duration             = "PT1H"
   is_enabled                   = true
   destinations                 = [oci_ons_notification_topic.alerts.id]
-  body                         = "The daily GC check (ops/gc-freshness) posted nothing for 2 days. Check: kubectl -n ops get jobs."
+  body                         = "The daily GC check (ops/gc-freshness) posted nothing in the last 24 hours. Check: kubectl -n ops get jobs."
   repeat_notification_duration = "PT24H"
 }
 
@@ -198,7 +201,7 @@ resource "oci_monitoring_alarm" "disk_check_missing" {
   metric_compartment_id        = var.compartment_id
   display_name                 = "platform: VM disk check not running"
   namespace                    = "platform_node"
-  query                        = "node_disk_used_pct[1h].absent(3h)"
+  query                        = "node_disk_used_pct[3h].absent()"
   severity                     = "WARNING"
   pending_duration             = "PT5M"
   is_enabled                   = true
