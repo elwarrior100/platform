@@ -178,6 +178,35 @@ resource "oci_monitoring_alarm" "lake_gc_check_missing" {
   repeat_notification_duration = "PT24H"
 }
 
+# VM disk (envs/oracle/ops/node-health.yaml posts it every 30 min; OCI does not measure an instance's filesystem).
+resource "oci_monitoring_alarm" "disk_high" {
+  compartment_id               = var.compartment_id
+  metric_compartment_id        = var.compartment_id
+  display_name                 = "platform: VM disk above 80%"
+  namespace                    = "platform_node"
+  query                        = "node_disk_used_pct[30m].max() > 80"
+  severity                     = "WARNING"
+  pending_duration             = "PT5M"
+  is_enabled                   = true
+  destinations                 = [oci_ons_notification_topic.alerts.id]
+  body                         = "The VM disk is over 80% (kubelet evicts pods at 95%). Check: df -h /; sudo du -sh /var/lib/rancher/k3s/*; old images: sudo k3s crictl rmi --prune."
+  repeat_notification_duration = "PT24H"
+}
+
+resource "oci_monitoring_alarm" "disk_check_missing" {
+  compartment_id               = var.compartment_id
+  metric_compartment_id        = var.compartment_id
+  display_name                 = "platform: VM disk check not running"
+  namespace                    = "platform_node"
+  query                        = "node_disk_used_pct[1h].absent(3h)"
+  severity                     = "WARNING"
+  pending_duration             = "PT5M"
+  is_enabled                   = true
+  destinations                 = [oci_ons_notification_topic.alerts.id]
+  body                         = "The disk check (ops/node-health) posted nothing for 3 hours. Check: kubectl -n ops get jobs."
+  repeat_notification_duration = "PT24H"
+}
+
 # Always Free includes 50,000 Object Storage requests a month; beyond that each 10k costs money. The lake copy once
 # needed ~17k a day (ADR-016): warn when a day goes over 1,500 (a 45k/month pace), before anything is charged.
 resource "oci_monitoring_alarm" "objectstorage_requests_high" {

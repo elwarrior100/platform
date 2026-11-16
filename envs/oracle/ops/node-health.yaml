@@ -1,0 +1,56 @@
+# Disk watch for the VM (OCI does not measure the filesystem of an instance). Every 30 minutes: ask Prometheus (its
+# node-exporter sees the host disk) how full "/" is, and post node_disk_used_pct to OCI Monitoring. OCI alarms: above
+# 80%, or no value for 3 hours (terraform/oracle/alarms.tf). Memory is already watched by OCI (MemoryUtilization).
+# It may reach Prometheus and OCI only (its own NetworkPolicy in networkpolicy.yaml).
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: node-health
+  namespace: ops
+spec:
+  schedule: "*/30 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      ttlSecondsAfterFinished: 3600
+      template:
+        metadata:
+          labels: {app: node-health}
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false   # it never talks to the Kubernetes API
+          securityContext: {runAsNonRoot: true, seccompProfile: {type: RuntimeDefault}}
+          volumes: [{name: tmp, emptyDir: {sizeLimit: 64Mi}}]
+          containers:
+            - name: check
+              image: ghcr.io/oracle/oci-cli:latest@sha256:2127c2f50ee1353fa78cbf538ab91ffaccc0d02b6d0b4144530cef6ee69709f5
+              env: [{name: OCI_CLI_AUTH, value: instance_principal}, {name: HOME, value: /tmp}]
+              command: [sh, -ec]
+              args:
+                - |
+                  PCT=$(python3 - <<'PY'
+                  import json, time, urllib.parse, urllib.request
+                  q = '100*(1-node_filesystem_avail_bytes{mountpoint="/"}/node_filesystem_size_bytes{mountpoint="/"})'
+                  url = "http://monitoring-kube-prometheus-prometheus.monitoring.svc.cluster.local:9090/api/v1/query?" + urllib.parse.urlencode({"query": q})
+                  for attempt in range(30):   # network policies reach a new pod a few seconds after it starts
+                      try:
+                          r = json.load(urllib.request.urlopen(url, timeout=10))["data"]["result"]; break
+                      except OSError:
+                          time.sleep(2)
+                  else:
+                      raise SystemExit("Prometheus unreachable")
+                  print(round(max(float(x["value"][1]) for x in r), 1))
+                  PY
+                  )
+                  echo "disk / used: $PCT%"
+                  MD=$(python3 -c 'import json,urllib.request; d=json.load(urllib.request.urlopen(urllib.request.Request("http://169.254.169.254/opc/v2/instance/", headers={"Authorization": "Bearer Oracle"}))); print(d["compartmentId"], d["canonicalRegionName"])')
+                  COMP=${MD% *}; REGION=${MD#* }
+                  oci monitoring metric-data post --endpoint "https://telemetry-ingestion.$REGION.oraclecloud.com" \
+                    --metric-data "[{\"namespace\":\"platform_node\",\"compartmentId\":\"$COMP\",\"name\":\"node_disk_used_pct\",\"dimensions\":{\"cluster\":\"oracle\"},\"datapoints\":[{\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"value\":$PCT}]}]" >/dev/null
+                  echo "posted node_disk_used_pct=$PCT"
+              volumeMounts: [{name: tmp, mountPath: /tmp}]
+              securityContext: {runAsUser: 1000, allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}, readOnlyRootFilesystem: true}
+              resources: {requests: {cpu: 20m, memory: 64Mi}, limits: {memory: 256Mi}}

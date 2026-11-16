@@ -31,6 +31,11 @@ sudo systemctl restart systemd-logind
 printf 'apiVersion: kubelet.config.k8s.io/v1beta1\nkind: KubeletConfiguration\nshutdownGracePeriod: 90s\nshutdownGracePeriodCriticalPods: 30s\n' \
   | sudo tee /var/lib/rancher/k3s/agent/etc/kubelet.conf.d/99-graceful-shutdown.conf >/dev/null
 
+# Container images: unused ones are removed from 70% disk use (default 85%), and any image unused for 14 days goes
+# anyway. Every upgrade leaves the old image behind: they had reached 23 GB on 2026-11-16.
+printf 'apiVersion: kubelet.config.k8s.io/v1beta1\nkind: KubeletConfiguration\nimageGCHighThresholdPercent: 70\nimageGCLowThresholdPercent: 55\nimageMaximumGCAge: 336h\n' \
+  | sudo tee /var/lib/rancher/k3s/agent/etc/kubelet.conf.d/97-image-gc.conf >/dev/null
+
 # A slice of the 2 OCPU and 12 GB kept for k3s itself and the OS, outside every pod's reach. Without it, restarting
 # several heavy pods at once starved k3s' own database (kine) until k3s exited (2026-11-15). The scheduler sees
 # 250m CPU and 768Mi less; pod requests were trimmed to their measured use to fit.
