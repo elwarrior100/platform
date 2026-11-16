@@ -35,6 +35,10 @@ grafana:
   grafana.ini:
     unified_alerting:
       enabled: false
+    # Memory (2026-11-16): Grafana starts one backend process per bundled datasource (14, ~5 MB each). Only Prometheus
+    # is used; these are disabled (re-enable one by removing it here if a project needs it).
+    plugins:
+      disable_plugins: jaeger,loki,mssql,mysql,opentsdb,tempo,zipkin,grafana-pyroscope-datasource,stackdriver,cloudwatch,elasticsearch,influxdb,grafana-postgresql-datasource
 prometheus:
   prometheusSpec:
     scrapeInterval: 60s
