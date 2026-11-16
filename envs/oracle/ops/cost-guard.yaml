@@ -63,8 +63,11 @@ spec:
                   # ACK is "<YYYY-MM>:<spend when resumed>" (scripts/cost-guard-resume.sh), or "-"
                   MONTH=$(date -u +%Y-%m)
                   # the highest actual spend of the budgets on the tenancy (one: "Alertmax"); a failed read fails the run
-                  SPEND=$(oci budgets budget budget list --compartment-id "$COMP" --all \
-                    --query 'max_by(data, &"actual-spend")."actual-spend"' --raw-output)
+                  BUDGET=$(oci budgets budget budget list --compartment-id "$COMP" --all \
+                    --query 'max_by(data, &"actual-spend").["actual-spend","time-spend-computed"]' --output json)
+                  SPEND=$(echo "$BUDGET" | python3 -c 'import json,sys; print(json.load(sys.stdin)[0])')
+                  # when Oracle last computed it: right after the 1st, the budget can still hold LAST month's spend
+                  COMPUTED=$(echo "$BUDGET" | python3 -c 'import json,sys; print(json.load(sys.stdin)[1] or "")')
                   # any number Python reads (a tiny spend can print as 3.4e-07); anything else fails the run (and the
                   # "cost guard not running" alarm fires)
                   SPEND=$(python3 -c 'import sys; print("%.6f" % float(sys.argv[1]))' "$SPEND") || { echo "no budget spend read: '$SPEND'" >&2; exit 1; }
@@ -83,6 +86,11 @@ spec:
                   if ! python3 -c 'import sys; sys.exit(0 if float(sys.argv[1]) >= float(sys.argv[2]) else 1)' "$SPEND" "$LIMIT"; then
                     echo "below the limit: nothing to do"; exit 0
                   fi
+                  # month rollover: a spend computed before this month began is last month's, and must not stop the VM
+                  case "$COMPUTED" in
+                    "$MONTH"*) ;;
+                    *) echo "over the limit, but the spend was computed at '$COMPUTED' (before $MONTH): last month's, not acting"; exit 0 ;;
+                  esac
                   STATEMENTS=$(python3 -c 'import json,sys; print(json.dumps(["zero %s quotas in tenancy" % f for f in sys.argv[1:]]))' $FAMILIES)
                   if [ "$DRY_RUN" = true ]; then
                     echo "DRY RUN: would create quota cost-guard-zero ($(echo $FAMILIES | wc -w) families) and SOFTSTOP $INSTANCE"; exit 0

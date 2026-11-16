@@ -48,6 +48,11 @@ spec:
         - name: postgres
           # pinned by digest: "latest-pg17" alone let the two clusters run different builds (TimescaleDB 2.31 vs 2.32)
           image: timescale/timescaledb:latest-pg17@sha256:6a6b7d7a346d7c6be03a310c240706f3bbc6d7adbdf3fbc07823570b34337f5e
+          # WAL (2026-11-16, performance review): ~16 GB of WAL in 47 h for a few MB of data, ~95% of it full-page images
+          # (each event is inserted, then updated with its batch_id; random UUID index pages). lz4 compresses those
+          # images and a 15 min checkpoint writes each hot page less often. Crash recovery replays a bit more WAL
+          # (seconds). The nightly pg_dump is unaffected.
+          args: ["-c", "wal_compression=lz4", "-c", "checkpoint_timeout=15min", "-c", "max_wal_size=2GB"]
           ports:
             - containerPort: 5432
           env:

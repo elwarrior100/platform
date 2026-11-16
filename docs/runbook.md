@@ -182,6 +182,9 @@ tenancy quota `cost-guard-zero` (nothing paid can be created) and soft-stopped t
 2. Resume from the Mac: `./scripts/cost-guard-resume.sh --dry-run`, then without `--dry-run`. It deletes the quota,
    tags the VM `cost-guard-ack=<YYYY-MM>` (the guard only reports for the rest of that month) and starts the VM.
 3. After ~3 minutes: `ssh ubuntu@platform-oracle 'sudo k3s kubectl get nodes'`, then the Argo CD apps healthy.
+**Resume within 9 days.** Object Storage lifecycle rules keep running while the VM is off: lake bundles and catalogs
+go after 9 days and dumps after 14, and with the VM stopped no new ones are written. Past 9 days the off-site lake copy
+is gone (the lake on the VM disk is intact); the first night after resuming writes a full bundle again.
 Testing the guard without acting: render the CronJob as a Job with THRESHOLD=0.001 and DRY_RUN=true (it prints
 "DRY RUN: would create quota ... and SOFTSTOP"). Never test with DRY_RUN=false: it stops the VM.
 

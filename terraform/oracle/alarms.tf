@@ -237,7 +237,7 @@ resource "oci_monitoring_alarm" "objectstorage_requests_high" {
   pending_duration             = "PT5M"
   is_enabled                   = true
   destinations                 = [oci_ons_notification_topic.alerts.id]
-  body                         = "More than 1,500 Object Storage requests in a day (Always Free: 50,000 a month). Check what ran: kubectl -n backup get jobs; kubectl -n ops get jobs; the lake copy should be ~4 requests a night (ADR-016)."
+  body                         = "More than 1,500 Object Storage requests in a day (Always Free: 50,000 a month). Check what ran: kubectl -n backup get jobs; kubectl -n ops get jobs; the lake copy should be ~6 requests a night (ADR-016)."
   repeat_notification_duration = "PT24H"
 }
 
