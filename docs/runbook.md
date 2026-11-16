@@ -166,10 +166,22 @@ on a forecast over EUR 0.05. When it fires:
    24 GB); Vault (software keys only; never a virtual private vault); load balancers and reserved IPs (none).
 3. Stop the source first (suspend the CronJob in git, promote), then fix the design, then re-enable.
 
+## Cost kill-switch tripped (VM stopped on purpose)
+The hourly guard (envs/oracle/ops/cost-guard.yaml, ADR-017) found the month's spend at EUR 1.00 or more: it created the
+tenancy quota `cost-guard-zero` (nothing paid can be created) and soft-stopped the VM. Nothing was deleted.
+1. Find the cause first: cost by service (command in the section above). Fix it in git before resuming, or the jobs
+   that caused it run again when the VM starts (suspend the CronJob, promote after the VM is up).
+2. Resume from the Mac: `./scripts/cost-guard-resume.sh --dry-run`, then without `--dry-run`. It deletes the quota,
+   tags the VM `cost-guard-ack=<YYYY-MM>` (the guard only reports for the rest of that month) and starts the VM.
+3. After ~3 minutes: `ssh ubuntu@platform-oracle 'sudo k3s kubectl get nodes'`, then the Argo CD apps healthy.
+Testing the guard without acting: render the CronJob as a Job with THRESHOLD=0.001 and DRY_RUN=true (it prints
+"DRY RUN: would create quota ... and SOFTSTOP"). Never test with DRY_RUN=false: it stops the VM.
+
 ## Safeguards: nothing fills up, nothing costs (all email the alert address)
 | Risk | Guard |
 |---|---|
 | Any charge on the tenancy | budget alert at EUR 0.01 actual, EUR 0.05 forecast (budget.tf) |
+| A runaway charge | ops/cost-guard hourly: at EUR 1.00 in the month, zero quotas + soft-stop the VM, never deletes (ADR-017); alarms when tripped and when the guard stops |
 | Object Storage requests (50k free/month) | lake copy in bundles (ADR-016); alarm above 1,500 requests in a day |
 | Object Storage space (20 GB free) | alarms at 12 GB (lake copy) and 5 GB (dumps); dumps expire after 14 days; prune by bundle cycles |
 | VM disk | ops/node-health every 30 min, alarm above 80% and when the check stops; kubelet image GC from 70% and after 14 days unused; kubelet evicts pods at 95% |
