@@ -41,6 +41,15 @@ resource "oci_objectstorage_object_lifecycle_policy" "backups" {
     time_unit   = "DAYS"
     target      = "objects"
   }
+  # a failed upload of a big dump (multipart above 128 MiB) leaves parts that are billed storage: abort after 2 days
+  rules {
+    name        = "abort-unfinished-uploads-after-2-days"
+    action      = "ABORT"
+    is_enabled  = true
+    time_amount = 2
+    time_unit   = "DAYS"
+    target      = "multipart-uploads"
+  }
   depends_on = [oci_identity_policy.backups]
 }
 

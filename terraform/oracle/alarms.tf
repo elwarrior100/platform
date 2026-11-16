@@ -210,6 +210,21 @@ resource "oci_monitoring_alarm" "disk_check_missing" {
   repeat_notification_duration = "PT24H"
 }
 
+# All buckets together (Always Free: 20 GB in total). The per-bucket alarms can each stay under while the sum does not.
+resource "oci_monitoring_alarm" "storage_total_high" {
+  compartment_id               = var.compartment_id
+  metric_compartment_id        = oci_identity_compartment.backups.id
+  display_name                 = "platform: Object Storage total above 15 GB"
+  namespace                    = "oci_objectstorage"
+  query                        = "StoredBytes[1h].grouping().sum() > 15000000000"
+  severity                     = "CRITICAL"
+  pending_duration             = "PT1H"
+  is_enabled                   = true
+  destinations                 = [oci_ons_notification_topic.alerts.id]
+  body                         = "All buckets together are above 15 GB (Always Free: 20 GB in total). Check the dumps (14 days kept), the lake bundles (prune) and the lake size."
+  repeat_notification_duration = "P1D"
+}
+
 # Always Free includes 50,000 Object Storage requests a month; beyond that each 10k costs money. The lake copy once
 # needed ~17k a day (ADR-016): warn when a day goes over 1,500 (a 45k/month pace), before anything is charged.
 resource "oci_monitoring_alarm" "objectstorage_requests_high" {
