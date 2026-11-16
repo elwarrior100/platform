@@ -25,6 +25,7 @@ grafana:
       sha: 52d311dcedd587421a236c4d6c621f05614c40a51386e955e0699dca97ec0880
     datasources:
       initDatasources: true
+      watchMethod: LIST          # the init container gets the sidecar's method: LIST loads once and exits (WATCH never ends)
   testFramework:
     enabled: false
   # Memory (2026-11-16): the datasources never change at run time, so they load once in an init container instead of a
