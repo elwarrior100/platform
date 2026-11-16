@@ -23,8 +23,16 @@ grafana:
   sidecar:
     image:
       sha: 52d311dcedd587421a236c4d6c621f05614c40a51386e955e0699dca97ec0880
+    datasources:
+      initDatasources: true
   testFramework:
     enabled: false
+  # Memory (2026-11-16): the datasources never change at run time, so they load once in an init container instead of a
+  # sidecar watching all day (~85Mi). Grafana's own alerting holds no rules here (alarms are OCI's, rules are
+  # Prometheus'): off, so it does not run its scheduler and state store. Dashboards are unchanged.
+  grafana.ini:
+    unified_alerting:
+      enabled: false
 prometheus:
   prometheusSpec:
     scrapeInterval: 60s
@@ -77,3 +85,26 @@ kubeScheduler:
   enabled: false
 kubeProxy:
   enabled: false
+
+# Memory (2026-11-16): ~43k of Prometheus' 125k series were latency histograms of k3s internals (API server, etcd/kine,
+# work queues) that no dashboard or alarm of ours reads (workqueue_queue_duration_seconds stays: the API server dashboard uses it); k3s even exposes them twice (its kubelet endpoint carries the
+# API server's metrics). Dropped at scrape time. Kept: apiserver_request_sli_duration_seconds_bucket (the API server
+# SLO alert rules use it). The chart's own default drops are repeated here, because a list in values replaces it.
+kubeApiServer:
+  serviceMonitor:
+    metricRelabelings:
+      - action: drop                 # chart default: fewer buckets
+        regex: (etcd_request|apiserver_request_slo|apiserver_request_sli|apiserver_request)_duration_seconds_bucket;(0\.15|0\.2|0\.3|0\.35|0\.4|0\.45|0\.6|0\.7|0\.8|0\.9|1\.25|1\.5|1\.75|2|3|3\.5|4|4\.5|6|7|8|9|15|20|40|45|50)(\.0)?
+        sourceLabels: [__name__, le]
+      - action: drop
+        regex: '(apiserver_request_duration_seconds|etcd_request_duration_seconds|apiserver_watch_list_duration_seconds|apiserver_response_sizes|apiserver_watch_cache_read_wait_seconds|apiserver_request_body_size_bytes|apiserver_watch_events_sizes|workqueue_work_duration_seconds)_bucket'
+        sourceLabels: [__name__]
+kubelet:
+  serviceMonitor:
+    metricRelabelings:
+      - action: drop                 # chart default: fewer buckets of kubelet storage operations
+        sourceLabels: [__name__, le]
+        regex: (csi_operations|storage_operation_duration)_seconds_bucket;(0.25|2.5|15|25|120|600)(\.0)?
+      - action: drop
+        regex: '(apiserver_request_duration_seconds|etcd_request_duration_seconds|apiserver_watch_list_duration_seconds|apiserver_response_sizes|apiserver_watch_cache_read_wait_seconds|apiserver_request_body_size_bytes|apiserver_watch_events_sizes|workqueue_work_duration_seconds)_bucket'
+        sourceLabels: [__name__]
