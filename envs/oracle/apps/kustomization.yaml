@@ -18,6 +18,11 @@ patches:
     patch: |-
       - {op: replace, path: /spec/generators/0/git/revision, value: oracle}
       - {op: replace, path: /spec/template/spec/source/targetRevision, value: oracle}
+      # PAUSED (2026-11-17, Stephane's decision): the modbus project is stopped on Oracle until he has reviewed all
+      # its code. No automated sync, so the collector, writer and OPC UA edge stay scaled to 0 (done by hand, in that
+      # order, after the writer drained the spool). To resume: delete this line, set modbus_running = true in
+      # terraform/oracle/variables.tf, scale the three deployments back to 1 and unpause the DAGs (docs/PLAN.md).
+      - {op: remove, path: /spec/template/spec/syncPolicy/automated}
   - target: {kind: Application, labelSelector: "platform/values-source=true"}
     patch: |-
       - {op: replace, path: /spec/sources/1/targetRevision, value: oracle}

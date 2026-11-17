@@ -76,5 +76,5 @@ variable "budget_ocid" {
 # switched off, since no silver is expected (the platform's own alarms stay on).
 variable "modbus_running" {
   type    = bool
-  default = true
+  default = false # PAUSED since 2026-11-17 (envs/oracle/apps/kustomization.yaml): true again when the project resumes
 }
