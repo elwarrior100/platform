@@ -17,7 +17,7 @@ notifications:
 
 controller:
   resources:
-    requests: {cpu: 100m, memory: 512Mi}
+    requests: {cpu: 50m, memory: 512Mi}      # CPU measured ~2-26m (2026-11-17)
     limits: {memory: 1Gi}           # 768Mi: it idles at ~680Mi and was OOM-killed 3 times during a large sync (2026-11-15)
   # Memory (2026-11-16): a soft target for Go's garbage collector (it collects harder near it, never kills). Without it
   # the heap grows to twice the live set before a GC. 512MiB leaves room for more projects; the 1Gi limit stays.
