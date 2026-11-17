@@ -33,11 +33,45 @@ orphan and crashes while logging it.
 Seen on 2026-11-14 after the graceful-shutdown reboot test. Check newer Airflow releases for a fix.
 
 ## lakeFS main is unreadable (a commit points at a missing object)
-1. Stop the writer: `kubectl -n ingest scale deploy/writer --replicas=0`.
-2. Remove the branch protection of `main` (lakeFS UI: repository settings, or the API `settings/branch_protection`),
-   hard-reset `main` to the last readable commit, delete the broken `etl-*` branch, put the protection back
-   (`scripts/lakefs-repo.sh` does it).
-3. Set the spool batch back to `pending` and scale the writer to 1. Reconcile (project: `tests/phase3/run.sh`).
+Every script defaults to the LOCAL cluster: export `KUBECONFIG=~/.kube/oracle.yaml` first when this is Oracle.
+1. Stop new writes: `kubectl -n ingest scale deploy/writer --replicas=0`; pause `silver_hourly` in Airflow.
+2. Find the last readable commit of `main` (lakeFS UI, commits of `main`: open the newest ones until a file reads).
+   Note its time T: every merge after it will be dropped.
+3. Remove `main`'s branch protection (lakeFS UI: repository settings, branches), then hard-reset it:
+   `PUT /api/v1/repositories/industrial-lake/branches/main/hard_reset?ref=<commit id>` (lakeFS API hardResetBranch) (admin key, port-forward to
+   `svc/lakefs` 8000). `scripts/lakefs-repo.sh` does NOT reset anything: it only re-creates the protection, so run it
+   afterwards (`./scripts/lakefs-repo.sh industrial-lake lake`).
+4. Re-export what was dropped: batches exported after T are still in the spool if newer than 7 days (spool retention).
+   Set them back to pending, e.g. `UPDATE batches SET state='pending' WHERE state='exported' AND seq > <seq of the
+   first batch after T>;` (find it from the batch ids in the dropped commits' metadata). Older batches are no longer
+   in the spool: re-merge their `etl-*` branch if it still exists (pruned after 7 days), else restore the lake
+   (section "Restore the lake").
+5. Scale the writer to 1, unpause silver; the "silver hours missing or late" alarm lists the hours to re-run (clear
+   them in Airflow; delete a leftover `silver-<dt>-<hh>` branch first). Then reconcile (project: `tests/phase3/run.sh`).
+
+## The VM is lost entirely (rebuild from git + Terraform + backups)
+Order matters; every step is from the repositories, the vault and Object Storage. Nothing on the old disk is needed.
+1. `cd terraform/oracle && terraform apply`: a new VM (new OCID; the dynamic group, its policies and the alarms
+   follow it). It has no open port (network.tf), so the first login is through the OCI console: instance, "Console
+   connection" (serial console), or Cloud Shell with a temporary security-list rule for port 22 from Cloud Shell's
+   address, removed right after.
+2. On the VM: install Tailscale and join with a one-time auth key from the Tailscale admin console, tagged
+   `tag:platform` (`sudo tailscale up --auth-key=... --advertise-tags=tag:platform --hostname=platform-oracle`). In
+   the console, disable key expiry for it. Its Tailscale IP changes: update `100.108.9.15` in
+   `envs/oracle/ingress/ingresses.yaml`, `envs/oracle/apps/ingress.yaml`, `scripts/ui.sh` and this runbook (grep for it).
+3. From the Mac: `./envs/oracle/bootstrap-vm.sh` (kubelet settings, swap, k3s, Tailscale Services), then
+   `export KUBECONFIG=~/.kube/oracle.yaml` for EVERY step below (the scripts default to the local cluster).
+4. `./scripts/install-argocd.sh`, `kubectl apply -f envs/oracle/root-app.yaml`, `./scripts/wait-secrets.sh` (the
+   External Secrets Operator reads the vault with the new instance principal).
+5. `./scripts/bootstrap-postgres-ingest.sh`; restore the databases from the newest COMPLETE dump (`_COMPLETE`):
+   `globals.sql` first (roles), then `pg_restore --create -d postgres` per database (`--create`: the databases do not
+   exist yet), then restart lakeFS, Airflow, OpenMetadata.
+6. Restore the lake objects (section "Restore the lake"), BEFORE starting the writer.
+7. `./scripts/install-airflow.sh` / `install-openmetadata.sh` only if their applications are not healthy; then the
+   writer and the DAGs. Check every alarm returns to OK.
+If the vault itself is lost, the Secrets cannot be recreated: lakeFS's `AUTH_ENCRYPT_SECRET_KEY` in particular is
+needed to read the restored lakeFS database. Keep an offline copy of the vault secrets (`scripts/vault-get.sh`) in a
+password manager.
 
 ## An alarm email arrived (OCI Notifications, topic platform-alerts)
 | Alarm | First look |
