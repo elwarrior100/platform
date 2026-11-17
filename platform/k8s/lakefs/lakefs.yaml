@@ -79,6 +79,12 @@ spec:
               value: "100000000"
             - name: LAKEFS_DATABASE_POSTGRES_MAX_IDLE_CONNECTIONS
               value: "5"
+            # Metadata growth (2026-11-17): each commit rewrites the "ranges" (index pieces) that changed. With the default
+            # 50,000 entries per range, the whole lake fit in ONE range (~0.5 MB) and every commit (2 a minute: the
+            # batch commit and its merge) rewrote it: _lakefs/ was 82% of the lake (821 MB in 3 days) and commits are
+            # never garbage-collected. ~1,000 entries per range: a commit rewrites only the last small piece.
+            - name: LAKEFS_COMMITTED_PERMANENT_RANGE_RAGGEDNESS_ENTRIES
+              value: "1000"
             - name: LAKEFS_STATS_ENABLED
               value: "false"
           readinessProbe:
