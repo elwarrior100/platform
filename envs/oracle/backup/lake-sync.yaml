@@ -29,7 +29,7 @@ spec:
         spec:
           restartPolicy: Never
           automountServiceAccountToken: false   # it never talks to the Kubernetes API
-          volumes: [{name: cfg, emptyDir: {}}, {name: tmp, emptyDir: {sizeLimit: 512Mi}}, {name: work, emptyDir: {sizeLimit: 12Gi}}]
+          volumes: [{name: cfg, emptyDir: {}}, {name: tmp, emptyDir: {sizeLimit: 512Mi}}, {name: work, emptyDir: {sizeLimit: 20Gi}}]
           initContainers:
             # the Object Storage namespace and the bucket's compartment are looked up with the instance principal,
             # so no account identifier has to live in this public repository

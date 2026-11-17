@@ -20,10 +20,17 @@ grafana:
     limits: {memory: 512Mi}        # 256Mi was OOM-killed at start-up (Grafana 12 loads its plugins)
   image:
     sha: 54e297ac67e2b72572f926892f4e06074dc4f79f2a56ed9a9ca9a88a46f28733
+  # Security (2026-11-17 audit): by default Grafana's service account may read EVERY Secret in the cluster (the sidecars
+  # look for dashboards and datasources in secrets too). Namespaced: a Role in "monitoring" only, and configmaps only.
+  rbac:
+    namespaced: true
   sidecar:
     image:
       sha: 52d311dcedd587421a236c4d6c621f05614c40a51386e955e0699dca97ec0880
+    dashboards:
+      resource: configmap
     datasources:
+      resource: configmap
       initDatasources: true
       watchMethod: LIST          # the init container gets the sidecar's method: LIST loads once and exits (WATCH never ends)
       skipReload: true           # Grafana is not up yet while an init container runs: it reads the file when it starts

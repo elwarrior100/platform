@@ -23,7 +23,7 @@ spec:
   jobTemplate:
     spec:
       backoffLimit: 0
-      activeDeadlineSeconds: 1200
+      activeDeadlineSeconds: 3600          # 3m40s at 1 GB / 19k objects (2026-11-17); grows with the lake
       ttlSecondsAfterFinished: 86400
       template:
         metadata:
@@ -69,10 +69,11 @@ spec:
               restartPolicy: Always
               # volumes of 256 MB, as many as the disk allows (-volume.max=0, like production); the emptyDir sizeLimit of
               # "sw" is the cap. 64 MB x 20 ran out of writable volumes on 2026-11-17, when the lake passed 1 GB.
-              args: [server, -dir=/data, -ip=127.0.0.1, -ip.bind=0.0.0.0, -master.volumeSizeLimitMB=256, -volume.max=0, -s3, -s3.port=8333]
+              # -volume.index=leveldb keeps the needle index on disk instead of in memory (it was 493 of 512 MiB)
+              args: [server, -dir=/data, -ip=127.0.0.1, -ip.bind=0.0.0.0, -master.volumeSizeLimitMB=256, -volume.max=0, -volume.index=leveldb, -s3, -s3.port=8333]
               startupProbe: {tcpSocket: {port: 8333}, periodSeconds: 2, failureThreshold: 60}
               volumeMounts: [{name: sw, mountPath: /data}, {name: tmp, mountPath: /tmp}]
-              resources: {requests: {cpu: 50m, memory: 128Mi}, limits: {memory: 512Mi}}
+              resources: {requests: {cpu: 50m, memory: 128Mi}, limits: {memory: 1Gi}}   # 493 MiB used at 1 GB of lake (2026-11-17)
               securityContext: {runAsUser: 65534, allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}, readOnlyRootFilesystem: true}
             - name: restore-db
               image: timescale/timescaledb:latest-pg17@sha256:6a6b7d7a346d7c6be03a310c240706f3bbc6d7adbdf3fbc07823570b34337f5e
@@ -109,7 +110,7 @@ spec:
                   echo "catalog $CAT: $(wc -l < /work/bundles.txt | tr -d ' ') bundle(s)"
                   while read -r b; do rclone cat "$B/bundles/$b" | tar -xz -C /stage; done < /work/bundles.txt
                   rclone mkdir lake:lake
-                  rclone move /stage lake:lake --transfers 8 -q
+                  rclone move /stage lake:lake --transfers 4 -q
                   echo "objects restored into the scratch SeaweedFS: $(rclone size lake:lake --json)"
               volumeMounts: [{name: work, mountPath: /work}, {name: tmp, mountPath: /tmp}, {name: stage, mountPath: /stage}]
               resources: {requests: {cpu: 50m, memory: 64Mi}, limits: {memory: 256Mi}}

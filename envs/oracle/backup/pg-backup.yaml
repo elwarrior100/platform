@@ -3,7 +3,7 @@
 #
 # Nightly logical backup of every platform database (ingest spool, lakeFS metadata, Airflow, OpenMetadata) plus
 # the roles, uploaded to the platform-backups bucket (terraform/oracle/backups.tf). Oracle deletes dumps after
-# 14 days; the VM may create and read objects there but not delete them.
+# 7 days; the VM may create and read objects there but not delete them.
 #
 # 1. init container (postgres image): pg_dumpall --globals-only + pg_dump -Fc of each database into an emptyDir
 # 2. main container (OCI CLI): uploads them with the VM's instance principal (no key anywhere)

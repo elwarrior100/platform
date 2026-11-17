@@ -51,7 +51,7 @@ Seen on 2026-11-14 after the graceful-shutdown reboot test. Check newer Airflow 
 | silver not updated for 3 h | Airflow `silver_hourly` runs (a G2 fail is expected for incomplete hours); writer logs; `kubectl -n ops logs` of the last freshness job |
 | disk above 80% / disk check missing | `ssh` the VM: `df -h /`, `sudo k3s crictl rmi --prune`; `kubectl -n ops get jobs` (node-health) |
 | Prometheus alerts firing | which ones: lines `firing:` in the logs of the newest `ops/node-health` job; then that alert's runbook link in Prometheus /alerts |
-| bucket above N GB / all Object Storage above 15 GB | `oci os object list` on the bucket; dumps expire after 14 days, lake bundles and catalogs after 9 days: growth here means the lake itself grew (retention/GC, ADR-015) |
+| bucket above N GB / all Object Storage above 15 GB | `oci os object list` on the bucket; dumps expire after 7 days, lake bundles and catalogs after 9 days: growth here means the lake itself grew (retention/GC, ADR-015) |
 | Object Storage requests above 1,500 in a day | who made them: the lake copy should make ~6 a night, the drill a few a day; a manual prune or restore is expected to trip it (ADR-016) |
 | cost guard: COST LIMIT / not running | section "Cost kill-switch tripped" below; "not running": `kubectl -n ops logs` of the newest `cost-guard` job |
 
@@ -76,7 +76,7 @@ Run it now, without touching anything live: `KUBECONFIG=~/.kube/oracle.yaml ./sc
 4. Check: list `main` in lakeFS and read a bronze and a silver file; reconcile the spool (project: tests/phase3/run.sh).
 
 ## Restore a database
-- Backups: `platform-backups/<date>/<HHMMSS>/` in Object Storage (one prefix per run, nightly, kept 14 days); a run
+- Backups: `platform-backups/<date>/<HHMMSS>/` in Object Storage (one prefix per run, nightly, kept 7 days); a run
   is complete only if it has `_COMPLETE` (written last). The lake objects are copied nightly to `platform-lake-backup`. Prove they restore at any time:
   `./scripts/pg-restore-test.sh` (restores into scratch databases and compares row counts).
 - Real restore: scale the application to 0, `pg_restore --clean -d <db>` from the dump (same image as Postgres),
@@ -154,7 +154,7 @@ read a report. Heartbeat: `ops/gc-freshness` posts `lake_gc_success` daily (alar
 2. First real deletion, of exactly that list: `KUBECONFIG=~/.kube/oracle.yaml ./scripts/lakefs-gc-sweep.sh <mark id>`.
    It refuses a mark older than 48 h, prints the marked objects (read-only key) and asks you to type `sweep`.
 3. Once that went well, set `GC_SWEEP: "true"` in `envs/oracle/lakefs-gc/gc.yaml` (weekly mark and sweep).
-GC retention (15 days, `scripts/lakefs-repo.sh`) must stay >= the dump lifecycle (14 days): CI checks it.
+GC retention (15 days, `scripts/lakefs-repo.sh`) must stay >= the dump lifecycle (7 days): CI checks it.
 
 ## CPU and memory headroom (2 OCPU, 12 GB)
 The kubelet reserves 250m CPU and 768Mi for k3s and the OS (`kubelet.conf.d/98-reserved.conf`, bootstrap-vm.sh):
@@ -183,7 +183,7 @@ tenancy quota `cost-guard-zero` (nothing paid can be created) and soft-stopped t
    tags the VM `cost-guard-ack=<YYYY-MM>` (the guard only reports for the rest of that month) and starts the VM.
 3. After ~3 minutes: `ssh ubuntu@platform-oracle 'sudo k3s kubectl get nodes'`, then the Argo CD apps healthy.
 **Resume within 9 days.** Object Storage lifecycle rules keep running while the VM is off: lake bundles and catalogs
-go after 9 days and dumps after 14, and with the VM stopped no new ones are written. Past 9 days the off-site lake copy
+go after 9 days and dumps after 7, and with the VM stopped no new ones are written. Past 9 days the off-site lake copy
 is gone (the lake on the VM disk is intact); the first night after resuming writes a full bundle again.
 Testing the guard without acting: render the CronJob as a Job with THRESHOLD=0.001 and DRY_RUN=true (it prints
 "DRY RUN: would create quota ... and SOFTSTOP"). Never test with DRY_RUN=false: it stops the VM.
@@ -194,7 +194,7 @@ Testing the guard without acting: render the CronJob as a Job with THRESHOLD=0.0
 | Any charge on the tenancy | budget alert at EUR 0.01 actual, EUR 0.05 forecast (budget.tf) |
 | A runaway charge | ops/cost-guard hourly: at EUR 1.00 in the month, zero quotas + soft-stop the VM, never deletes (ADR-017); alarms when tripped and when the guard stops |
 | Object Storage requests (50k free/month) | lake copy in bundles (ADR-016); alarm above 1,500 requests in a day |
-| Object Storage space (20 GB free) | alarms at 12 GB (lake copy), 5 GB (dumps) and 15 GB (all buckets); dumps expire after 14 days, lake bundles and catalogs after 9 days |
+| Object Storage space (20 GB free) | alarms at 12 GB (lake copy), 5 GB (dumps) and 15 GB (all buckets); dumps expire after 7 days, lake bundles and catalogs after 9 days |
 | Spool (Postgres) growth | ingest/spool-retention daily: events of exported batches older than 7 days, rejected ones older than 30 |
 | VM disk | ops/node-health every 30 min, alarm above 80% and when the check stops; kubelet image GC from 70% and after 14 days unused; kubelet evicts pods at 95% |
 | VM memory | OCI MemoryUtilization alarm above 92%; kubelet eviction at 600Mi (soft) / 300Mi (hard), 60 s per pod |

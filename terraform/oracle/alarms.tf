@@ -221,7 +221,7 @@ resource "oci_monitoring_alarm" "storage_total_high" {
   pending_duration             = "PT1H"
   is_enabled                   = true
   destinations                 = [oci_ons_notification_topic.alerts.id]
-  body                         = "All buckets together are above 15 GB (Always Free: 20 GB in total). Check the dumps (14 days kept), the lake bundles (prune) and the lake size."
+  body                         = "All buckets together are above 15 GB (Always Free: 20 GB in total). Check the dumps (7 days kept), the lake bundles (prune) and the lake size."
   repeat_notification_duration = "PT24H"
 }
 

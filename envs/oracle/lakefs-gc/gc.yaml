@@ -27,7 +27,7 @@ spec:
   jobTemplate:
     spec:
       backoffLimit: 0
-      activeDeadlineSeconds: 3600
+      activeDeadlineSeconds: 10800         # the mark reads every commit (~2.9k/day); 3 min on 15-11, measure the 22-11 run
       ttlSecondsAfterFinished: 604800       # keep a week: the job's log is the GC report
       template:
         metadata:

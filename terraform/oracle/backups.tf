@@ -29,15 +29,15 @@ resource "oci_objectstorage_bucket" "backups" {
   versioning     = "Disabled"
 }
 
-# Oracle deletes dumps older than 14 days, so the bucket never grows past the free 20 GB.
+# Oracle deletes dumps older than 7 days (14 until 2026-11-17: the spool dump grows to ~300 MB, 14 x ~320 MB was ~4.5 GB), so the bucket stays far from the free 20 GB.
 resource "oci_objectstorage_object_lifecycle_policy" "backups" {
   namespace = data.oci_objectstorage_namespace.this.namespace
   bucket    = oci_objectstorage_bucket.backups.name
   rules {
-    name        = "delete-dumps-after-14-days"
+    name        = "delete-dumps-after-7-days"
     action      = "DELETE"
     is_enabled  = true
-    time_amount = 14
+    time_amount = 7
     time_unit   = "DAYS"
     target      = "objects"
   }
