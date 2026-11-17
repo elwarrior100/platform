@@ -73,19 +73,27 @@ dagProcessor:
     requests: {cpu: 50m, memory: 384Mi}
     limits: {memory: 768Mi}
   livenessProbe: {initialDelaySeconds: 10, timeoutSeconds: 30, failureThreshold: 3, periodSeconds: 300}
+# Task pods (KubernetesExecutor) run as airflow-worker, which the chart binds to the pod-launcher role (create/delete
+# pods, pods/exec in this namespace). Our tasks never call the Kubernetes API (Airflow 3 tasks talk to the API server
+# over HTTP), so they get no token (2026-11-17 audit: a task could exec into the scheduler and read its secrets).
 workers:
+  serviceAccount:              # chart 1.22.0 reads this key (workers.kubernetes.serviceAccount is not wired yet)
+    automountServiceAccountToken: false
+  # The lakeFS key (Secret lakefs-credentials) goes to the TASK pods only (2026-11-17 audit: through the global
+  # extraEnvFrom the scheduler, API server and DAG processor held it too, and none of them talks to lakeFS).
+  env:
+    - {name: LAKEFS_ACCESS_KEY_ID, valueFrom: {secretKeyRef: {name: lakefs-credentials, key: LAKEFS_ACCESS_KEY_ID}}}
+    - {name: LAKEFS_SECRET_ACCESS_KEY, valueFrom: {secretKeyRef: {name: lakefs-credentials, key: LAKEFS_SECRET_ACCESS_KEY}}}
   kubernetes:                  # with the KubernetesExecutor these are the limits of each task pod
     resources:
       requests: {cpu: 100m, memory: 384Mi}
       limits: {memory: 1Gi}
 
-# lakeFS connection for task pods (Secret lakefs-credentials, derived from data-lakefs-auth in the vault)
+# lakeFS endpoint for task pods (the key comes from workers.env above: Secret lakefs-credentials, from the vault)
 env:
   - {name: LAKEFS_ENDPOINT, value: "http://lakefs.data.svc.cluster.local:8000"}
   # Image the modbus tasks run in (published by that repository's CI, tag = commit SHA). Bump it to deploy new code.
   - {name: MODBUS_PIPELINES_IMAGE, value: "ghcr.io/elwarrior100/modbus-pipelines:c2d511fc3ec8008346cc1661dff73a86ba45d215"}
-extraEnvFrom: |
-  - secretRef: {name: lakefs-credentials}
 
 # Task pods disappear when they finish: logs must live on a volume. The volume is created by
 # platform/k8s/airflow/logs-pvc.yaml (the chart would ask for ReadWriteMany, which local-path does not support).
