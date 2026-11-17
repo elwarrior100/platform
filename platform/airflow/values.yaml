@@ -58,7 +58,7 @@ triggerer:
 
 apiServer:
   resources:
-    requests: {cpu: 100m, memory: 512Mi}
+    requests: {cpu: 30m, memory: 512Mi}      # CPU measured ~3m (2026-11-17): the reservation, not the use, filled the node
     limits: {memory: 1Gi}
 # Liveness probes (2026-11-16, performance review): `airflow jobs check` costs ~3.4 s of CPU per run; every 60 s on two
 # pods it was ~22% of all container CPU, around the clock. Every 300 s, 3 failures: a hung scheduler is restarted
