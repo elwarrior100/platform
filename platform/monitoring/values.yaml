@@ -20,10 +20,12 @@ grafana:
     limits: {memory: 512Mi}        # 256Mi was OOM-killed at start-up (Grafana 12 loads its plugins)
   image:
     sha: 54e297ac67e2b72572f926892f4e06074dc4f79f2a56ed9a9ca9a88a46f28733
-  # Security (2026-11-17 audit): by default Grafana's service account may read EVERY Secret in the cluster (the sidecars
-  # look for dashboards and datasources in secrets too). Namespaced: a Role in "monitoring" only, and configmaps only.
+  # Security (2026-11-17 audit): by default Grafana's service account may read EVERY Secret in the cluster (the chart's
+  # ClusterRole always lists secrets). It now uses our own ClusterRole (extraManifests at the end): configmaps only,
+  # in every namespace, so a project can still ship dashboards from its own namespace.
   rbac:
-    namespaced: true
+    namespaced: false
+    useExistingClusterRole: grafana-configmaps-reader
   sidecar:
     image:
       sha: 52d311dcedd587421a236c4d6c621f05614c40a51386e955e0699dca97ec0880
@@ -121,3 +123,14 @@ kubelet:
       - action: drop
         regex: '(apiserver_request_duration_seconds|etcd_request_duration_seconds|apiserver_watch_list_duration_seconds|apiserver_response_sizes|apiserver_watch_cache_read_wait_seconds|apiserver_request_body_size_bytes|apiserver_watch_events_sizes|workqueue_work_duration_seconds)_bucket'
         sourceLabels: [__name__]
+# Grafana's sidecars read dashboards/datasources from configmaps (labelled grafana_dashboard / grafana_datasource) in
+# any namespace; nothing else (see grafana.rbac above).
+extraManifests:
+  - apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRole
+    metadata:
+      name: grafana-configmaps-reader
+    rules:
+      - apiGroups: [""]
+        resources: [configmaps]
+        verbs: [get, watch, list]
