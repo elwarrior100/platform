@@ -53,13 +53,15 @@ spec:
                 - {name: RCLONE_CONFIG_LAKE_TYPE, value: s3}
                 - {name: RCLONE_CONFIG_LAKE_PROVIDER, value: SeaweedFS}
                 - {name: RCLONE_CONFIG_LAKE_ENDPOINT, value: "http://seaweedfs.data.svc.cluster.local:8333"}
-                # target: OCI Object Storage with the VM's instance principal (no key); big parts, few in parallel:
-                # few requests per upload and ~128Mi of buffers
+                # target: OCI Object Storage with the VM's instance principal (no key).
+                # ONE request per file, never multipart: a multipart upload needs OBJECT_OVERWRITE, which the VM does
+                # not have on purpose (the copy stays tamper-proof). 2026-11-17: a 9,440-object bundle went over the
+                # old 256Mi cutoff and failed with "404 BucketNotFound" (OCI's answer to a missing permission). A single
+                # PUT takes up to 5 GiB here (the lake must stay well under that anyway, ADR-016), and costs 1 request.
                 - {name: RCLONE_CONFIG_OCI_TYPE, value: oracleobjectstorage}
                 - {name: RCLONE_CONFIG_OCI_PROVIDER, value: instance_principal_auth}
-                - {name: RCLONE_OOS_CHUNK_SIZE, value: 64Mi}
-                - {name: RCLONE_OOS_UPLOAD_CUTOFF, value: 256Mi}
-                - {name: RCLONE_OOS_UPLOAD_CONCURRENCY, value: "2"}
+                - {name: RCLONE_OOS_UPLOAD_CUTOFF, value: 5Gi}
+                - {name: RCLONE_MULTI_THREAD_STREAMS, value: "0"}     # no "multi-thread copy" (it is multipart too)
                 - {name: HOME, value: /tmp}
               command: [sh, -ec]
               args:

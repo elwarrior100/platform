@@ -67,7 +67,10 @@ spec:
                 - |
                   NS=$(oci os ns get --query data --raw-output)
                   PREFIX=$(date -u +%Y-%m-%d/%H%M%S)      # one prefix per run: a retry never overwrites (the VM may not)
-                  oci os object bulk-upload -ns "$NS" -bn platform-backups --src-dir /dump --object-prefix "$PREFIX/"
+                  # --no-multipart: a multipart upload needs OBJECT_OVERWRITE, which the VM does not have on purpose (it may
+                  # not overwrite backups). The CLI switches to multipart above 128 MiB; ingest.dump was 107 MB on 2026-11-17
+                  # and growing. One PUT takes up to 50 GiB.
+                  oci os object bulk-upload -ns "$NS" -bn platform-backups --src-dir /dump --object-prefix "$PREFIX/" --no-multipart
                   # written LAST: a run without it is incomplete, and the restore test ignores it
                   date -u +%FT%TZ > /tmp/_COMPLETE && oci os object put -ns "$NS" -bn platform-backups --file /tmp/_COMPLETE --name "$PREFIX/_COMPLETE" >/dev/null
                   echo "uploaded to platform-backups/$PREFIX/ (complete)"
