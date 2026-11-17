@@ -71,3 +71,10 @@ variable "budget_ocid" {
   description = "The tenancy's existing budget (created in the console as \"Alertmax\"; one budget per compartment), imported in budget.tf"
   type        = string
 }
+
+# The modbus project on Oracle (collector, writer, silver). false while it is paused on purpose: the silver alarms are
+# switched off, since no silver is expected (the platform's own alarms stay on).
+variable "modbus_running" {
+  type    = bool
+  default = true
+}

@@ -4,6 +4,10 @@
 #     and in the lake copy);
 #   - events of REJECTED batches are kept 30 days, for the post-mortem, then deleted;
 #   - batches left with no events are deleted. Pending batches are never touched.
+#   - the NEWEST event of every sensor (source + OPC UA node) is always kept, whatever its age (2026-11-17 audit): a
+#     static node (Connected, alarm, state) keeps its old source timestamp, so after a collector reconnect OPC UA resends
+#     it with the SAME event_id; with the original deleted, the spool's dedup (UNIQUE event_id) would let it into bronze
+#     and silver a second time.
 # Postgres reuses the freed space (autovacuum); the dump only contains live rows, so it shrinks at once.
 apiVersion: batch/v1
 kind: CronJob
@@ -39,12 +43,15 @@ spec:
                   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -q <<'SQL'
                   \echo events before:
                   SELECT count(*) FROM events;
+                  CREATE TEMP TABLE keep AS SELECT max(seq) AS seq FROM events GROUP BY source, opcua_node_id;
                   DELETE FROM events e USING batches b
                    WHERE e.batch_id = b.batch_id AND b.state = 'exported'
-                     AND e.ingest_ts < (extract(epoch from now() - interval '7 days') * 1000000)::bigint;
+                     AND e.ingest_ts < (extract(epoch from now() - interval '7 days') * 1000000)::bigint
+                     AND e.seq NOT IN (SELECT seq FROM keep);
                   DELETE FROM events e USING batches b
                    WHERE e.batch_id = b.batch_id AND b.state = 'rejected'
-                     AND e.ingest_ts < (extract(epoch from now() - interval '30 days') * 1000000)::bigint;
+                     AND e.ingest_ts < (extract(epoch from now() - interval '30 days') * 1000000)::bigint
+                     AND e.seq NOT IN (SELECT seq FROM keep);
                   DELETE FROM batches b
                    WHERE b.state IN ('exported', 'rejected')
                      AND NOT EXISTS (SELECT 1 FROM events e WHERE e.batch_id = b.batch_id);

@@ -1,6 +1,9 @@
 # Runs in its own namespace (ops): it only needs the lakeFS key and the metrics post, not the backup credentials.
 # Every 30 min: is the newest silver merge in lakeFS main less than 3 h old? If so, post silver_fresh to OCI
 # Monitoring. The OCI alarm "silver not updated for 3 h" (terraform/oracle/alarms.tf) fires when these stop.
+# It also posts silver_gap_hours (2026-11-17 audit): over the last 48 closed hours (older than 2 h), how many hours have
+# bronze but no silver (a failed hour stays a hole forever while the next hours keep silver_fresh green), plus how many
+# got bronze AFTER their silver was written (late data that never reaches silver). OCI alarm when above 0.
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -45,10 +48,41 @@ spec:
                   print(int(time.time() - max(silver)) if silver else 999999)
                   PY
                   )
-                  echo "newest silver merge: $AGE s ago"
+                  GAPS=$(python3 - <<'PY'
+                  import base64, datetime, json, os, sys, time, urllib.parse, urllib.request
+                  auth = base64.b64encode(f"{os.environ['LAKEFS_ACCESS_KEY_ID']}:{os.environ['LAKEFS_SECRET_ACCESS_KEY']}".encode()).decode()
+                  base = "http://lakefs.data.svc.cluster.local:8000/api/v1/repositories/industrial-lake/refs/main/objects"
+                  def ls(prefix):                      # every object under a prefix, with its mtime (paginated)
+                      out, after = [], ""
+                      while True:
+                          q = urllib.parse.urlencode({"prefix": prefix, "after": after, "amount": 1000})
+                          r = json.load(urllib.request.urlopen(urllib.request.Request(f"{base}/ls?{q}", headers={"Authorization": "Basic " + auth}), timeout=10))
+                          out += r["results"]
+                          if not r["pagination"]["has_more"]: return out
+                          after = r["pagination"]["next_offset"]
+                  now = datetime.datetime.now(datetime.timezone.utc).replace(minute=0, second=0, microsecond=0)
+                  missing, late = [], []
+                  for h in range(2, 50):               # closed hours, 2 to 49 hours ago
+                      t = now - datetime.timedelta(hours=h)
+                      part = f"dt={t:%Y-%m-%d}/hour={t:%H}/"
+                      bronze = [o for o in ls("bronze/" + part) if o["path"].endswith(".parquet")]
+                      if not bronze: continue
+                      silver = ls("silver/" + part)
+                      if not silver: missing.append(part); continue
+                      written = max(o["mtime"] for o in silver)
+                      if max(o["mtime"] for o in bronze) > written: late.append(part)
+                  for p in missing: print("silver missing:", p, file=sys.stderr)
+                  for p in late: print("bronze after silver (late):", p, file=sys.stderr)
+                  print(len(missing) + len(late))
+                  PY
+                  )
+                  echo "newest silver merge: $AGE s ago; silver gap hours (48 h): $GAPS"
+                  MD=$(python3 -c 'import json,urllib.request; d=json.load(urllib.request.urlopen(urllib.request.Request("http://169.254.169.254/opc/v2/instance/", headers={"Authorization": "Bearer Oracle"}))); print(d["compartmentId"], d["canonicalRegionName"])')
+                  COMP=${MD% *}; REGION=${MD#* }
+                  oci monitoring metric-data post --endpoint "https://telemetry-ingestion.$REGION.oraclecloud.com" \
+                    --metric-data "[{\"namespace\":\"platform_pipeline\",\"compartmentId\":\"$COMP\",\"name\":\"silver_gap_hours\",\"dimensions\":{\"cluster\":\"oracle\"},\"datapoints\":[{\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"value\":$GAPS}]}]" >/dev/null
+                  echo "posted silver_gap_hours=$GAPS"
                   if [ "$AGE" -lt 10800 ]; then
-                    MD=$(python3 -c 'import json,urllib.request; d=json.load(urllib.request.urlopen(urllib.request.Request("http://169.254.169.254/opc/v2/instance/", headers={"Authorization": "Bearer Oracle"}))); print(d["compartmentId"], d["canonicalRegionName"])')
-                    COMP=${MD% *}; REGION=${MD#* }
                     oci monitoring metric-data post --endpoint "https://telemetry-ingestion.$REGION.oraclecloud.com" \
                       --metric-data "[{\"namespace\":\"platform_pipeline\",\"compartmentId\":\"$COMP\",\"name\":\"silver_fresh\",\"dimensions\":{\"cluster\":\"oracle\"},\"datapoints\":[{\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"value\":1}]}]" >/dev/null
                     echo "heartbeat posted (silver_fresh)"

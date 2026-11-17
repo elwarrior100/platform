@@ -99,7 +99,7 @@ resource "oci_monitoring_alarm" "silver_stale" {
   query                        = "silver_fresh[3h].absent()"
   severity                     = "WARNING"
   pending_duration             = "PT5M"
-  is_enabled                   = true
+  is_enabled                   = var.modbus_running
   destinations                 = [oci_ons_notification_topic.alerts.id]
   body                         = "No silver hour merged into lakeFS main for 3 hours. Check Airflow (silver_hourly runs) and the writer."
   repeat_notification_duration = "PT6H"
@@ -270,5 +270,21 @@ resource "oci_monitoring_alarm" "prometheus_alerts" {
   is_enabled                   = true
   destinations                 = [oci_ons_notification_topic.alerts.id]
   body                         = "Prometheus has warning/critical alerts firing (a failed Job, a crash loop, a full volume...). Which ones: kubectl -n ops logs job/<latest node-health> (lines 'firing:'), or Prometheus /alerts via Grafana."
+  repeat_notification_duration = "PT24H"
+}
+
+# Silver holes (2026-11-17 audit): ops/silver-freshness posts silver_gap_hours, the closed hours of the last 48 that have
+# bronze but no silver, or bronze written after their silver. Either one is a hole in silver that nothing else reports.
+resource "oci_monitoring_alarm" "silver_gaps" {
+  compartment_id               = var.compartment_id
+  metric_compartment_id        = var.compartment_id
+  display_name                 = "platform: silver hours missing or late"
+  namespace                    = "platform_pipeline"
+  query                        = "silver_gap_hours[1h].min() > 0"
+  severity                     = "WARNING"
+  pending_duration             = "PT1H"
+  is_enabled                   = var.modbus_running
+  destinations                 = [oci_ons_notification_topic.alerts.id]
+  body                         = "Silver has holes: hours with bronze but no silver, or bronze written after their silver ran. Which hours: kubectl -n ops logs of the newest silver-freshness job (lines 'silver missing' / 'late'). Re-run those hours in Airflow (clear the silver_hourly run; delete a leftover silver-<dt>-<hh> branch first)."
   repeat_notification_duration = "PT24H"
 }
