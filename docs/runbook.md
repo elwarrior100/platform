@@ -34,18 +34,23 @@ Seen on 2026-11-14 after the graceful-shutdown reboot test. Check newer Airflow 
 
 ## lakeFS main is unreadable (a commit points at a missing object)
 Every script defaults to the LOCAL cluster: export `KUBECONFIG=~/.kube/oracle.yaml` first when this is Oracle.
-1. Stop new writes: `kubectl -n ingest scale deploy/writer --replicas=0`; pause `silver_hourly` in Airflow.
+1. Stop new writes: pause `silver_hourly` in Airflow. Scaling the writer to 0 is undone by Argo CD (self-heal) unless
+   its application's auto-sync is off; leaving it running is harmless (it cannot write while main is unreadable).
+   Practised on the local cluster on 2026-11-21 (`main` lost its newest metarange after an unclean VM stop).
 2. Find the last readable commit of `main` (lakeFS UI, commits of `main`: open the newest ones until a file reads).
    Note its time T: every merge after it will be dropped.
 3. Remove `main`'s branch protection (lakeFS UI: repository settings, branches), then hard-reset it:
    `PUT /api/v1/repositories/industrial-lake/branches/main/hard_reset?ref=<commit id>` (lakeFS API hardResetBranch) (admin key, port-forward to
-   `svc/lakefs` 8000). `scripts/lakefs-repo.sh` does NOT reset anything: it only re-creates the protection, so run it
-   afterwards (`./scripts/lakefs-repo.sh industrial-lake lake`).
+   `svc/lakefs` 8000; pass the key in a curl config file, never as an argument). Branch protection is
+   `GET/PUT .../settings/branch_protection`, and the PUT needs the `If-Match: <ETag>` of the GET. `scripts/lakefs-repo.sh`
+   does NOT reset anything: it only re-creates the protection (`./scripts/lakefs-repo.sh industrial-lake lake`).
 4. Re-export what was dropped: batches exported after T are still in the spool if newer than 7 days (spool retention).
    Set them back to pending, e.g. `UPDATE batches SET state='pending' WHERE state='exported' AND seq > <seq of the
    first batch after T>;` (find it from the batch ids in the dropped commits' metadata). Older batches are no longer
    in the spool: re-merge their `etl-*` branch if it still exists (pruned after 7 days), else restore the lake
-   (section "Restore the lake").
+   (section "Restore the lake"). The dropped batches' own `etl-<batch>` branches point at the broken commit and
+   CANNOT be deleted (410): hard-reset each to `main` instead, or the writer reuses it and blocks on it (one stuck batch
+   blocks every batch after it).
 5. Scale the writer to 1, unpause silver; the "silver hours missing or late" alarm lists the hours to re-run (clear
    them in Airflow; delete a leftover `silver-<dt>-<hh>` branch first). Then reconcile (project: `tests/phase3/run.sh`).
 
