@@ -20,9 +20,12 @@ locals {
   vm = "resourceId = \"${oci_core_instance.platform.id}\""
 }
 
-# "No heartbeat" alarms use <metric>[<window>].absent(): absent over the WHOLE window ([1d] = the last 24 h, [3h]).
+# "No heartbeat" alarms use <metric>[<window>].absent(): absent over the WHOLE window ([3h]).
 # Not <metric>[1h].absent(26h): OCI evaluates that hour by hour, so it fired one hour after every heartbeat
 # (2026-11-14/16: false alerts after each backup).
+# Not [1d] either (2026-11-21): OCI re-reads the whole window every minute, and the four [1d] alarms used ~110 million
+# datapoints a day, past the free 1,000 million a month. The daily jobs are watched instead through job_age_hours
+# (ops/job-freshness, every 30 min: hours since each CronJob last succeeded) over a 1-hour window.
 resource "oci_monitoring_alarm" "vm_down" {
   compartment_id               = var.compartment_id
   metric_compartment_id        = var.compartment_id
@@ -70,7 +73,7 @@ resource "oci_monitoring_alarm" "backup_missing" {
   metric_compartment_id        = var.compartment_id
   display_name                 = "platform: no successful backup in 24 h"
   namespace                    = "platform_backup"
-  query                        = "backup_success[1d].absent()"
+  query                        = "job_age_hours[1h]{job = \"pg-backup\"}.max() > 26"
   severity                     = "CRITICAL"
   pending_duration             = "PT1H"
   is_enabled                   = true
@@ -111,7 +114,7 @@ resource "oci_monitoring_alarm" "lake_sync_missing" {
   metric_compartment_id        = var.compartment_id
   display_name                 = "platform: no successful lake copy in 24 h"
   namespace                    = "platform_backup"
-  query                        = "lake_sync_success[1d].absent()"
+  query                        = "job_age_hours[1h]{job = \"lake-sync\"}.max() > 26"
   severity                     = "CRITICAL"
   pending_duration             = "PT1H"
   is_enabled                   = true
@@ -142,7 +145,7 @@ resource "oci_monitoring_alarm" "lake_drill_missing" {
   metric_compartment_id        = var.compartment_id
   display_name                 = "platform: lake restore drill not run in 24 h"
   namespace                    = "platform_backup"
-  query                        = "lake_drill_success[1d].absent()"
+  query                        = "job_age_hours[1h]{job = \"lake-restore-drill\"}.max() > 26"
   severity                     = "WARNING"
   pending_duration             = "PT1H"
   is_enabled                   = true
@@ -172,12 +175,12 @@ resource "oci_monitoring_alarm" "lake_gc_check_missing" {
   metric_compartment_id        = var.compartment_id
   display_name                 = "platform: lakeFS GC check not running"
   namespace                    = "platform_backup"
-  query                        = "lake_gc_success[1d].absent()"
+  query                        = "job_age_hours[1h]{job = \"gc-freshness\"}.max() > 26"
   severity                     = "WARNING"
   pending_duration             = "PT1H"
   is_enabled                   = true
   destinations                 = [oci_ons_notification_topic.alerts.id]
-  body                         = "The daily GC check (ops/gc-freshness) posted nothing in the last 24 hours. Check: kubectl -n ops get jobs."
+  body                         = "The daily GC check (ops/gc-freshness) has not succeeded in the last 26 hours. Check: kubectl -n ops get jobs."
   repeat_notification_duration = "PT24H"
 }
 
@@ -286,5 +289,35 @@ resource "oci_monitoring_alarm" "silver_gaps" {
   is_enabled                   = var.modbus_running
   destinations                 = [oci_ons_notification_topic.alerts.id]
   body                         = "Silver has holes: hours with bronze but no silver, or bronze written after their silver ran. Which hours: kubectl -n ops logs of the newest silver-freshness job (lines 'silver missing' / 'late'). Re-run those hours in Airflow (clear the silver_hourly run; delete a leftover silver-<dt>-<hh> branch first)."
+  repeat_notification_duration = "PT24H"
+}
+
+# The weekly lakeFS GC itself (Sundays 05:00): more than 8 days + 2 h since it last succeeded.
+resource "oci_monitoring_alarm" "lake_gc_overdue" {
+  compartment_id               = var.compartment_id
+  metric_compartment_id        = var.compartment_id
+  display_name                 = "platform: lakeFS GC not run for 8 days"
+  namespace                    = "platform_backup"
+  query                        = "job_age_hours[1h]{job = \"lakefs-gc\"}.max() > 194"
+  severity                     = "WARNING"
+  pending_duration             = "PT1H"
+  is_enabled                   = true
+  destinations                 = [oci_ons_notification_topic.alerts.id]
+  body                         = "The weekly lakeFS garbage collection (data/lakefs-gc) has not succeeded for more than 8 days. Check: kubectl -n data get jobs; logs of the latest lakefs-gc job (runbook: lakeFS garbage collection)."
+  repeat_notification_duration = "PT24H"
+}
+
+# The checker itself: job_age_hours stopped arriving (the four age alarms above would stay silent without it).
+resource "oci_monitoring_alarm" "job_checker_missing" {
+  compartment_id               = var.compartment_id
+  metric_compartment_id        = var.compartment_id
+  display_name                 = "platform: job freshness check not running"
+  namespace                    = "platform_backup"
+  query                        = "job_age_hours[3h].absent()"
+  severity                     = "WARNING"
+  pending_duration             = "PT1H"
+  is_enabled                   = true
+  destinations                 = [oci_ons_notification_topic.alerts.id]
+  body                         = "ops/job-freshness posted nothing for 3 hours, so the backup, lake copy, drill and GC age alarms cannot fire. Check: kubectl -n ops get jobs; logs of the newest job-freshness job."
   repeat_notification_duration = "PT24H"
 }
