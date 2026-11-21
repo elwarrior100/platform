@@ -84,6 +84,9 @@ workers:
   env:
     - {name: LAKEFS_ACCESS_KEY_ID, valueFrom: {secretKeyRef: {name: lakefs-credentials, key: LAKEFS_ACCESS_KEY_ID}}}
     - {name: LAKEFS_SECRET_ACCESS_KEY, valueFrom: {secretKeyRef: {name: lakefs-credentials, key: LAKEFS_SECRET_ACCESS_KEY}}}
+    # OpenMetadata (catalog and G2 history, best effort): optional, so a missing token never blocks a task
+    - {name: OPENMETADATA_URL, value: "http://openmetadata.openmetadata.svc.cluster.local:8585"}
+    - {name: OPENMETADATA_TOKEN, valueFrom: {secretKeyRef: {name: openmetadata-bot, key: OPENMETADATA_TOKEN, optional: true}}}
   kubernetes:                  # with the KubernetesExecutor these are the limits of each task pod
     resources:
       requests: {cpu: 100m, memory: 384Mi}

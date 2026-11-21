@@ -1,0 +1,13 @@
+# OpenMetadata ingestion-bot token for the Airflow TASK pods (catalog and G2 history, ADR-009 decision 5), from the
+# vault (scripts/openmetadata-bot-token.sh oracle). The namespace prefix rule allows airflow-* keys only.
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: openmetadata-bot
+  namespace: airflow
+spec:
+  refreshInterval: 1h
+  secretStoreRef: {kind: ClusterSecretStore, name: oci-vault}
+  target: {name: openmetadata-bot, creationPolicy: Orphan, deletionPolicy: Retain}
+  data:
+    - {secretKey: OPENMETADATA_TOKEN, remoteRef: {key: airflow-openmetadata-bot-oracle, property: token}}
