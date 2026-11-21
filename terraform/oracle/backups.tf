@@ -73,8 +73,8 @@ resource "oci_objectstorage_bucket" "lake" {
   versioning     = "Disabled"
 }
 
-# Uploads of big bundles go in parts (ADR-016); a failed one leaves parts that take space but no listing shows. Object
-# Storage aborts such unfinished uploads after 2 days (this deletes no object).
+# Bundles go up in ONE request since 2026-11-17 (multipart needs OBJECT_OVERWRITE, which the VM lacks on purpose), so
+# no unfinished multipart upload is expected; this rule stays as a safety net: Object Storage aborts any after 2 days.
 resource "oci_objectstorage_object_lifecycle_policy" "lake" {
   namespace = data.oci_objectstorage_namespace.this.namespace
   bucket    = oci_objectstorage_bucket.lake.name
