@@ -90,7 +90,7 @@ password manager.
 |---|---|
 | VM not reporting | `ssh ubuntu@platform-oracle`; if no answer, OCI console: instance state, serial console |
 | CPU > 90% / memory > 92% | Grafana (`http://grafana.100.108.9.15.sslip.io`, or `./scripts/ui.sh` :3000), "Kubernetes / Compute Resources / Namespace"; `kubectl top pods -A` |
-| no successful backup in 24 h | `kubectl -n backup get jobs`; logs of the newest `pg-backup` job |
+| no successful backup in 24 h (job age above 26 h) | `kubectl -n backup get jobs`; logs of the newest `pg-backup` job; `kubectl -n ops logs` of the newest `job-freshness` job shows every job's age |
 | no successful lake copy in 24 h | `kubectl -n backup get jobs`; logs of the newest `lake-sync` job (a listing error of the copy fails the night on purpose, instead of a silent full bundle) |
 | lake restore drill missing / failed | `kubectl -n ops get jobs`; logs of the newest `lake-restore-drill` job (containers `restore-objects`, `check`) |
 | lakeFS GC failed / check missing | `kubectl -n data get jobs`; logs of the newest `lakefs-gc` job; `kubectl -n ops logs` of the last gc-freshness job |
@@ -247,5 +247,6 @@ Testing the guard without acting: render the CronJob as a Job with THRESHOLD=0.0
 | CPU starvation of k3s | 250m CPU and 768Mi reserved for k3s/OS; CPU limits on the heavy JVMs and Prometheus |
 | Lake growth | bronze 15 days, weekly lakeFS GC (heartbeat + alarm), branch pruning |
 | Prometheus / logs | retention 2 days / 1.5 GB; Airflow log groomer; journald ~80 MB |
-| A job silently stopped | heartbeats with absence alarms: backup, lake copy, drill, silver freshness, GC, disk, cost guard |
+| A job silently stopped | ops/job-freshness posts hours since each daily/weekly job last succeeded (alarms above 26 h, GC above 194 h); absence alarms ([3h]) for silver, disk, cost guard and the checker itself |
+| Monitoring reads (1,000 million datapoints/month free) | alarm windows of 1 h or 3 h only: never [1d] (four [1d].absent() alarms read ~110M a day, 2026-11-21) |
 | A failed Job, crash loop, full volume... | Prometheus alert rules counted by ops/node-health (no Alertmanager): OCI alarm when any warning/critical fires |
