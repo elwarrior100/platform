@@ -57,6 +57,20 @@ spec:
         - ipBlock: {cidr: 10.0.0.43/32}
       ports: [{port: 6443, protocol: TCP}]
 ---
+# ops: job-freshness reads the CronJobs' last success time from the Kubernetes API (same address as gc-freshness)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: job-freshness-to-api
+  namespace: ops
+spec:
+  podSelector: {matchLabels: {app: job-freshness}}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - ipBlock: {cidr: 10.0.0.43/32}
+      ports: [{port: 6443, protocol: TCP}]
+---
 # ops: only the node-health pod may reach Prometheus (it reads the host disk use from node-exporter's metrics).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy

@@ -1,0 +1,127 @@
+# How long since each scheduled job last SUCCEEDED (2026-11-21, cost fix). Every 30 min this job reads the CronJobs'
+# status.lastSuccessfulTime from the Kubernetes API and posts job_age_hours{job=...} to OCI Monitoring. The OCI alarms
+# then ask "is the age above N hours?" over a 1-hour window.
+# Why: the previous alarms asked "<heartbeat>[1d].absent()". OCI re-reads that whole day of data every minute, and
+# the 4 of them used ~110 million datapoints a day: the free allowance (1,000 million retrieved a month) would have
+# run out around 25-11 and cost ~EUR 3 a month. Same protection, ~1/24 of the reads.
+# Permissions: read CronJobs in backup, ops and data, nothing else; egress: the API server only (networkpolicy.yaml).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: job-checker
+  namespace: ops
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: read-cronjobs
+  namespace: backup
+rules:
+  - apiGroups: [batch]
+    resources: [cronjobs]
+    verbs: [get, list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: job-checker-reads-cronjobs
+  namespace: backup
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: read-cronjobs}
+subjects:
+  - {kind: ServiceAccount, name: job-checker, namespace: ops}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: read-cronjobs
+  namespace: ops
+rules:
+  - apiGroups: [batch]
+    resources: [cronjobs]
+    verbs: [get, list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: job-checker-reads-cronjobs
+  namespace: ops
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: read-cronjobs}
+subjects:
+  - {kind: ServiceAccount, name: job-checker, namespace: ops}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: job-checker-reads-jobs
+  namespace: data
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: read-jobs}   # defined in gc-freshness.yaml
+subjects:
+  - {kind: ServiceAccount, name: job-checker, namespace: ops}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: job-freshness
+  namespace: ops
+spec:
+  schedule: "*/30 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      ttlSecondsAfterFinished: 3600
+      template:
+        metadata:
+          labels: {app: job-freshness}
+        spec:
+          restartPolicy: Never
+          serviceAccountName: job-checker
+          securityContext: {runAsNonRoot: true, seccompProfile: {type: RuntimeDefault}}
+          containers:
+            - name: check
+              image: ghcr.io/oracle/oci-cli:latest@sha256:2127c2f50ee1353fa78cbf538ab91ffaccc0d02b6d0b4144530cef6ee69709f5
+              env: [{name: OCI_CLI_AUTH, value: instance_principal}, {name: HOME, value: /tmp}]
+              command: [sh, -ec]
+              args:
+                - |
+                  python3 - > /tmp/metrics.json <<'PY'
+                  import datetime, json, os, ssl, sys, time, urllib.request
+                  sa = "/var/run/secrets/kubernetes.io/serviceaccount"
+                  ctx = ssl.create_default_context(cafile=sa + "/ca.crt")
+                  def get(path):
+                      req = urllib.request.Request("https://kubernetes.default.svc" + path,
+                                                   headers={"Authorization": "Bearer " + open(sa + "/token").read()})
+                      for attempt in range(30):   # network policies reach a new pod a few seconds after it starts
+                          try:
+                              return json.load(urllib.request.urlopen(req, context=ctx, timeout=10))
+                          except urllib.error.HTTPError:
+                              raise
+                          except OSError:
+                              time.sleep(2)
+                      raise SystemExit("Kubernetes API unreachable")
+                  now = datetime.datetime.now(datetime.timezone.utc)
+                  when = lambda t: datetime.datetime.fromisoformat(t.replace("Z", "+00:00"))
+                  md = json.load(urllib.request.urlopen(urllib.request.Request("http://169.254.169.254/opc/v2/instance/", headers={"Authorization": "Bearer Oracle"})))
+                  stamp, points = now.strftime("%Y-%m-%dT%H:%M:%SZ"), []
+                  for ns, name in [("backup", "pg-backup"), ("backup", "lake-sync"), ("ops", "lake-restore-drill"),
+                                   ("ops", "gc-freshness"), ("data", "lakefs-gc")]:
+                      cj = get(f"/apis/batch/v1/namespaces/{ns}/cronjobs/{name}")
+                      # never succeeded yet (a new CronJob): its age counts from its creation, not as an alarm
+                      last = cj["status"].get("lastSuccessfulTime") or cj["metadata"]["creationTimestamp"]
+                      age = round((now - when(last)).total_seconds() / 3600, 2)
+                      print(f"{name}: last success {last}, {age} h ago", file=sys.stderr)
+                      points.append({"namespace": "platform_backup", "compartmentId": md["compartmentId"],
+                                     "name": "job_age_hours", "dimensions": {"cluster": "oracle", "job": name},
+                                     "datapoints": [{"timestamp": stamp, "value": age}]})
+                  print(json.dumps(points))
+                  PY
+                  REGION=$(python3 -c 'import json,urllib.request; print(json.load(urllib.request.urlopen(urllib.request.Request("http://169.254.169.254/opc/v2/instance/", headers={"Authorization": "Bearer Oracle"})))["canonicalRegionName"])')
+                  oci monitoring metric-data post --endpoint "https://telemetry-ingestion.$REGION.oraclecloud.com" \
+                    --metric-data "file:///tmp/metrics.json" >/dev/null
+                  echo "posted job_age_hours for 5 jobs"
+              securityContext: {runAsUser: 1000, allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}, readOnlyRootFilesystem: true}
+              resources: {requests: {cpu: 20m, memory: 64Mi}, limits: {memory: 256Mi}}
+              volumeMounts: [{name: tmp, mountPath: /tmp}]
+          volumes: [{name: tmp, emptyDir: {sizeLimit: 64Mi}}]
