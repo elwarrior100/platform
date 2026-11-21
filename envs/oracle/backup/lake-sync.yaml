@@ -4,10 +4,11 @@
 # month. Now, each night:
 #   - list the lake (free: it is in the cluster) and read the newest catalog (catalog/<time>.txt.gz: one line per
 #     object already copied, "key<TAB>bundle")
-#   - pack only the new objects into bundles/<time>-incr.tar.gz; once a week pack EVERYTHING into
-#     bundles/<time>-full.tar.gz (so a restore never needs more than a week of bundles)
+#   - pack only the new objects into bundles/<time>-incr-NNN.tar.gz; once a week pack EVERYTHING into
+#     bundles/<time>-full-NNN.tar.gz (so a restore never needs more than a week of bundles); NNN = part, at most
+#     3 GiB of objects each (one upload takes at most 5 GiB without multipart)
 #   - write the new catalog (previous lines + the new ones; after a full, only the full's)
-# About 6 requests a night. Names are timestamps: nothing is ever overwritten, and the VM may neither overwrite nor
+# About 4 requests a night, plus one per extra part. Names are timestamps: nothing is ever overwritten, and the VM may neither overwrite nor
 # delete there; Object Storage itself deletes bundles and catalogs after 9 days (terraform/oracle/backups.tf). On success it posts lake_sync_success (OCI alarm when missing). Runs after pg-backup (02:30).
 apiVersion: batch/v1
 kind: CronJob
@@ -62,6 +63,7 @@ spec:
                 - {name: RCLONE_CONFIG_OCI_PROVIDER, value: instance_principal_auth}
                 - {name: RCLONE_OOS_UPLOAD_CUTOFF, value: 5Gi}
                 - {name: RCLONE_MULTI_THREAD_STREAMS, value: "0"}     # no "multi-thread copy" (it is multipart too)
+                - {name: PART_BYTES, value: "3221225472"}             # 3 GiB of objects per bundle (compressed: less)
                 - {name: HOME, value: /tmp}
               command: [sh, -ec]
               args:
@@ -71,33 +73,55 @@ spec:
                   B=oci:platform-lake-backup
                   NOW=$(date -u +%Y%m%dT%H%M%S)
                   cd /work
-                  rclone lsf -R --files-only lake:lake | sort > lake.txt                      # the lake (in the cluster: free)
-                  rclone lsf "$B/catalog/" > catalogs.txt                                   # 1 request; an error fails the run
-                  rclone lsf "$B/bundles/" --include '*-full.tar.gz' > fulls.txt            # 1 request
+                  # the lake with sizes, "path<TAB>bytes" (in the cluster: free)
+                  rclone lsf -R --files-only --format ps --separator "$(printf '\t')" lake:lake | sort > lakesz.txt
+                  cut -f1 lakesz.txt > lake.txt
+                  # 1 request; an error fails the run. The VM's identity token can fail to renew for a moment (401, seen
+                  # 2026-11-21): the FIRST call is retried before giving up
+                  for i in 1 2 3 4 5; do rclone lsf "$B/catalog/" > catalogs.txt && break; echo "OCI call failed (attempt $i), retry in 30 s" >&2; [ "$i" -lt 5 ] || exit 1; sleep 30; done
                   LATEST=$(sort catalogs.txt | tail -1)
-                  NEWEST_FULL=$(sort fulls.txt | tail -1 | cut -c1-8)                        # YYYYMMDD
+                  : > catalog.txt
+                  [ -z "$LATEST" ] || rclone cat "$B/catalog/$LATEST" | gunzip > catalog.txt   # 1 request
+                  # The newest full is read from the CATALOG (the source of truth), not from the bundle listing: a full
+                  # that failed half-way leaves bundles no catalog refers to, and must not count as this week's full
+                  # (else the real one could expire after 9 days while still needed).
+                  NEWEST_FULL=$(cut -f2 catalog.txt | grep -- '-full' | sort | tail -1 | cut -c1-8)   # YYYYMMDD
                   WEEK_AGO=$(date -u -d "@$(( $(date +%s) - 7 * 86400 ))" +%Y%m%d)
-                  # a full every week (when the newest full is 7 days old or more), or the very first time (the
-                  # listing worked and is empty). Object Storage deletes bundles and catalogs after 9 days, so a
-                  # restore (newest full + the incrementals after it) always finds everything it needs
-                  if [ -z "$LATEST" ] || [ -z "$NEWEST_FULL" ] || ! [ "$NEWEST_FULL" \> "$WEEK_AGO" ]; then
+                  # a full every week (when the newest full is 7 days old or more), or the very first time. Object
+                  # Storage deletes bundles and catalogs after 9 days, so a restore (newest full + the incrementals
+                  # after it) always finds everything it needs
+                  if [ -z "$NEWEST_FULL" ] || ! [ "$NEWEST_FULL" \> "$WEEK_AGO" ]; then
                     MODE=full; : > catalog.txt
                   else
-                    MODE=incr; rclone cat "$B/catalog/$LATEST" | gunzip > catalog.txt            # 1 request
+                    MODE=incr
                   fi
                   cut -f1 catalog.txt | sort > have.txt
                   comm -23 lake.txt have.txt > new.txt
                   N=$(wc -l < new.txt | tr -d ' ')
                   echo "lake: $(wc -l < lake.txt | tr -d ' ') objects; already bundled: $(wc -l < have.txt | tr -d ' '); new: $N ($MODE)"
                   if [ "$N" -gt 0 ]; then
-                    BUNDLE="$NOW-$MODE.tar.gz"
-                    rclone copy lake:lake files --files-from new.txt --transfers 4 -q        # in the cluster: free
-                    tar -C files -czf bundle.tar.gz .
-                    rclone copyto bundle.tar.gz "$B/bundles/$BUNDLE"                          # 1 request (or a few parts)
-                    { cat catalog.txt; awk -v b="$BUNDLE" '{print $0 "\t" b}' new.txt; } | gzip > catalog.new.gz
+                    # In PARTS of at most PART_BYTES of objects (2026-11-21): one upload takes at most 5 GiB without
+                    # multipart (which needs OBJECT_OVERWRITE, deliberately not granted), and the lake grows. Each part
+                    # is its own bundle "<time>-<mode>-NNN.tar.gz", one request each; the catalog maps every object to
+                    # its part, so the restore drill needs no change. Parts go one at a time: at most one part on disk.
+                    awk -F'\t' -v max="$PART_BYTES" 'NR==FNR {want[$1]=1; next}
+                      ($1 in want) { if (sum + $2 > max && sum > 0) { part++; sum = 0 }
+                                     sum += $2; print $1 > (sprintf("part-%03d.txt", part + 1)) }' new.txt lakesz.txt
+                    : > newcat.txt
+                    for P in part-*.txt; do
+                      NUM=${P#part-}; NUM=${NUM%.txt}
+                      BUNDLE="$NOW-$MODE-$NUM.tar.gz"
+                      rclone copy lake:lake files --files-from "$P" --transfers 4 -q       # in the cluster: free
+                      tar -C files -czf bundle.tar.gz .
+                      rclone copyto bundle.tar.gz "$B/bundles/$BUNDLE"                        # 1 request
+                      awk -v b="$BUNDLE" '{print $0 "\t" b}' "$P" >> newcat.txt
+                      echo "uploaded bundles/$BUNDLE ($(wc -l < "$P" | tr -d ' ') objects, $(du -h bundle.tar.gz | cut -f1))"
+                      rm -rf files bundle.tar.gz
+                    done
+                    # written LAST: a catalog only ever lists parts that were all uploaded
+                    { cat catalog.txt; cat newcat.txt; } | gzip > catalog.new.gz
                     rclone copyto catalog.new.gz "$B/catalog/$NOW.txt.gz"                     # 1 request
-                    echo "uploaded bundles/$BUNDLE ($(du -h bundle.tar.gz | cut -f1)) and catalog/$NOW.txt.gz"
-                    rm -rf files bundle.tar.gz
+                    echo "uploaded catalog/$NOW.txt.gz"
                   else
                     echo "nothing new: no upload"
                   fi

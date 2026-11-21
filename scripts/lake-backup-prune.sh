@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # EXCEPTIONAL manual prune of the lake copy (Object Storage deletes bundles/catalogs after 9 days on its own, ADR-016) (Object Storage bucket platform-lake-backup), run BY A PERSON from the Mac with their
 # own OCI identity: the VM may create and read there but never delete (ADR-013), and that stays so.
-# The copy is in bundles (ADR-016): bundles/<time>-full.tar.gz on the 1st of the month, <time>-incr.tar.gz nightly,
+# The copy is in bundles (ADR-016): bundles/<time>-full[-NNN].tar.gz weekly, <time>-incr[-NNN].tar.gz nightly (NNN: part),
 # and catalog/<time>.txt.gz. What can go:
 #   - bundles and catalogs older than the SECOND newest full bundle that a catalog refers to (the last two monthly
 #     cycles stay; a restore needs the newest full and what came after it), and never a bundle the newest catalog uses
@@ -37,7 +37,7 @@ referenced = set().union(*refs.values()) if refs else set()
 now = datetime.datetime.now(datetime.timezone.utc)
 when = lambda t: datetime.datetime.fromisoformat(t.replace("Z", "+00:00"))
 # only a full that some catalog refers to counts as a cycle (a full whose catalog upload failed does not)
-fulls = sorted((n, when(t)) for n, t, s in objs if n.startswith("bundles/") and n.endswith("-full.tar.gz") and n in referenced)
+fulls = sorted((n, when(t)) for n, t, s in objs if n.startswith("bundles/") and "-full" in n and n in referenced)
 stamp = lambda n: n.split("/")[1][:15]                     # 20261201T030000
 cand, reasons = [], {}
 if len(fulls) >= 2:                                        # keep from the second newest full onwards

@@ -104,7 +104,9 @@ spec:
                   B=oci:platform-lake-backup
                   # bundles (ADR-016): the newest catalog says which bundles hold the copied objects; fetch only those
                   # (1 request each, a week at most since the last full one), unpack, load into the scratch SeaweedFS
-                  CAT=$(rclone lsf "$B/catalog/" | sort | tail -1)
+                  # the VM's identity token can fail to renew for a moment (401, seen 2026-11-21): retry the FIRST
+                  # call before calling the drill failed; a real failure still fails after ~2.5 min
+                  for i in 1 2 3 4 5; do CAT=$(rclone lsf "$B/catalog/" | sort | tail -1) && break; echo "OCI call failed (attempt $i), retry in 30 s" >&2; sleep 30; done
                   [ -n "$CAT" ] || { echo "no catalog in the lake copy" >&2; exit 1; }
                   rclone cat "$B/catalog/$CAT" | gunzip | cut -f2 | sort -u > /work/bundles.txt
                   echo "catalog $CAT: $(wc -l < /work/bundles.txt | tr -d ' ') bundle(s)"
