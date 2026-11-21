@@ -1,0 +1,7 @@
+# macOS
+.DS_Store
+# editors
+.idea/
+.vscode/
+*.swp
+# Terraform state, secrets and local files live in terraform/oracle/.gitignore

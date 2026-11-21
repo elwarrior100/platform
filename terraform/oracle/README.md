@@ -2,8 +2,8 @@
 
 Manages the VM where the platform runs (k3s and the rest), its firewall, the secrets vault and the backups.
 
-⚠️ **Before the first `apply`:** create a budget / cost alert in the OCI console (Billing → Budgets) and check the
-Always Free ceiling of your account (Governance → Limits).
+⚠️ **Before the first `apply`:** create the budget in the OCI console (Billing → Budgets; `budget.tf` then imports
+it and adds the alert rules) and check the Always Free ceiling of your account (Governance → Limits).
 
 Prerequisites: `~/.oci/config` with the `DEFAULT` profile and an SSH key at `~/.ssh/id_ed25519.pub`.
 
@@ -27,7 +27,9 @@ terraform apply
 until terraform apply -auto-approve; do echo "No capacity. Retrying in 5 minutes."; sleep 300; done
 ```
 
-If the VM already exists, `apply` has nothing to do and the loop ends, so it never creates duplicates.
+If the VM already exists, `apply` has nothing to do and the loop ends, so it does not create duplicates **as long as
+the remote state is intact**. With a lost or wrong state it would create a second, billed VM: never use this loop
+without first reading one `terraform plan`.
 
 **Notes**
 - The state is remote (bucket `platform-tfstate`, versioned, created by `backups.tf`); it contains sensitive data and
@@ -35,4 +37,5 @@ If the VM already exists, `apply` has nothing to do and the loop ends, so it nev
 - Always Free A1 gives **2 OCPU / 12 GB RAM / 200 GB disk in total** across all A1 instances of the account
   (it was 4 / 24 before 2026). The defaults use all of it.
 - `ignore_changes` on the image stops a newer Ubuntu release from recreating the VM.
-- Pin the provider version after checking registry.terraform.io (currently `>= 5.0`).
+- The provider is pinned in `versions.tf` (`~> 9.13`).
+- Rebuilding after the VM is lost: see docs/runbook.md, "The VM is lost entirely" (cost traps included).

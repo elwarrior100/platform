@@ -69,6 +69,18 @@ Order matters; every step is from the repositories, the vault and Object Storage
 6. Restore the lake objects (section "Restore the lake"), BEFORE starting the writer.
 7. `./scripts/install-airflow.sh` / `install-openmetadata.sh` only if their applications are not healthy; then the
    writer and the DAGs. Check every alarm returns to OK.
+Cost traps in a rebuild (zero cost: check each before `terraform apply`):
+- The lost VM's boot volume is KEPT by default when an instance is terminated in the console. Old 100 GB + new 100 GB
+  is exactly the free 200 GB, with no room left: delete the orphan (or reuse it as the new boot volume, or restore
+  from the weekly backup) before creating the new VM.
+- The cost guard runs ON the VM: while it is down there is no automatic kill-switch, only the budget emails.
+- If the cost guard had tripped, the quota `cost-guard-zero` zeroes compute and block storage and the new VM cannot be
+  created: run `scripts/cost-guard-resume.sh` first.
+- `imports.tf` adopts the VM in `instance_ocid`: with the VM gone, point it at nothing (remove that import block for
+  the rebuild only) and READ the plan: it must create exactly one instance. Never `apply` a plan with two.
+- The private IP 10.0.0.43 is pinned (main.tf): if the old VM still exists (stopped, not terminated), the new one
+  cannot take it. Terminate the old one first.
+
 If the vault itself is lost, the Secrets cannot be recreated: lakeFS's `AUTH_ENCRYPT_SECRET_KEY` in particular is
 needed to read the restored lakeFS database. Keep an offline copy of the vault secrets (`scripts/vault-get.sh`) in a
 password manager.
@@ -204,8 +216,8 @@ on a forecast over EUR 0.05. When it fires:
    `oci usage-api usage-summary request-summarized-usages --tenant-id <tenancy> --time-usage-started <1st of month>
    --time-usage-ended <tomorrow> --granularity DAILY --query-type COST --group-by '["service","skuName"]'`
 2. Usual suspects and their free limits: Object Storage requests (50,000/month: the lake copy must stay in bundles,
-   ADR-016) and storage (20 GB); block storage (200 GB incl. the boot volume, 5 volume backups); A1 compute (4 OCPU,
-   24 GB); Vault (software keys only; never a virtual private vault); load balancers and reserved IPs (none).
+   ADR-016) and storage (20 GB); block storage (200 GB incl. the boot volume, 5 volume backups); A1 compute (Always Free:
+   2 OCPU / 12 GB in total, which this VM already uses entirely: never raise `ocpus`/`memory_in_gbs`); Vault (software keys only; never a virtual private vault); load balancers and reserved IPs (none).
 3. Stop the source first (suspend the CronJob in git, promote), then fix the design, then re-enable.
 
 ## Cost kill-switch tripped (VM stopped on purpose)

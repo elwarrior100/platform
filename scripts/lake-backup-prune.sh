@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Monthly prune of the lake copy (Object Storage bucket platform-lake-backup), run BY A PERSON from the Mac with their
+# EXCEPTIONAL manual prune of the lake copy (Object Storage deletes bundles/catalogs after 9 days on its own, ADR-016) (Object Storage bucket platform-lake-backup), run BY A PERSON from the Mac with their
 # own OCI identity: the VM may create and read there but never delete (ADR-013), and that stays so.
 # The copy is in bundles (ADR-016): bundles/<time>-full.tar.gz on the 1st of the month, <time>-incr.tar.gz nightly,
 # and catalog/<time>.txt.gz. What can go:

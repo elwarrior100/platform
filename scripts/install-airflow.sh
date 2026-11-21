@@ -2,7 +2,6 @@
 # Prepares the Airflow database role (idempotent). Airflow itself is deployed by Argo CD; secrets come from the vault.
 # No password goes through arguments or appears on screen.
 set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 export KUBECONFIG="${KUBECONFIG:-$HOME/.lima/industrial/copied-from-guest/kubeconfig.yaml}"
 # shellcheck source=scripts/lib.sh
 . "$(dirname "$0")/lib.sh"; show_target
