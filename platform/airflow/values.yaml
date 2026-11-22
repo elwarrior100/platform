@@ -34,7 +34,7 @@ config:
     # DAGs to the database. Every 300 s; the bundle refresh every 600 s (a new commit changes this file and restarts
     # the pod anyway).
     min_file_process_interval: "300"
-    dag_bundle_config_list: '[{"name": "modbus", "classpath": "airflow.providers.git.bundles.git.GitDagBundle", "kwargs": {"repo_url": "https://github.com/elwarrior100/modbus_data_plataform.git", "tracking_ref": "82f3868ffb018393c3f854d1d606487606b57228", "subdir": "pipelines/dags", "refresh_interval": 600}}]'
+    dag_bundle_config_list: '[{"name": "modbus", "classpath": "airflow.providers.git.bundles.git.GitDagBundle", "kwargs": {"repo_url": "https://github.com/elwarrior100/modbus_data_plataform.git", "tracking_ref": "2ef02381a5cb1cd79c9544c347ed48016afbced5", "subdir": "pipelines/dags", "refresh_interval": 600}}]'
 
 # Metadata database: the "airflow" database in the platform PostgreSQL (role prepared by scripts/install-airflow.sh;
 # the connection Secret comes from the vault through the External Secrets Operator)
@@ -96,7 +96,7 @@ workers:
 env:
   - {name: LAKEFS_ENDPOINT, value: "http://lakefs.data.svc.cluster.local:8000"}
   # Image the modbus tasks run in (published by that repository's CI, tag = commit SHA). Bump it to deploy new code.
-  - {name: MODBUS_PIPELINES_IMAGE, value: "ghcr.io/elwarrior100/modbus-pipelines:82f3868ffb018393c3f854d1d606487606b57228"}
+  - {name: MODBUS_PIPELINES_IMAGE, value: "ghcr.io/elwarrior100/modbus-pipelines:2ef02381a5cb1cd79c9544c347ed48016afbced5"}
 
 # Task pods disappear when they finish: logs must live on a volume. The volume is created by
 # platform/k8s/airflow/logs-pvc.yaml (the chart would ask for ReadWriteMany, which local-path does not support).
