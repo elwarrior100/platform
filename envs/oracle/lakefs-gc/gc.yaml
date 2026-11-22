@@ -51,7 +51,7 @@ spec:
             - name: gc
               image: ghcr.io/elwarrior100/lakefs-gc:7d37e6c6dcd133a2d497dae8556ad238d12fa323@sha256:41cdcd634e2e28b0cc1c1b2cbaeba145cfa9783134000ecc449a358378ccebf1
               env:
-                - {name: GC_SWEEP, value: "false"}
+                - {name: GC_SWEEP, value: "true"}      # 2026-11-22: the first reviewed sweep (mark ft61nsgdnd200091uomg, 2 objects) went well
                 - {name: GC_MARK_ID, value: ""}     # set only on a one-off Job: sweep this reviewed mark, mark nothing
                 - {name: REPOSITORY, value: industrial-lake}
                 - {name: LAKEFS_ACCESS_KEY_ID, valueFrom: {secretKeyRef: {name: lakefs-auth, key: ADMIN_ACCESS_KEY_ID}}}
