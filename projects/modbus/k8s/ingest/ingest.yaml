@@ -50,8 +50,11 @@ spec:
           args: ["write"]
           env:
             - {name: LAKEFS_ENDPOINT, value: "http://lakefs.data.svc.cluster.local:8000"}
-            - {name: BATCH_ROWS, value: "5000"}
-            - {name: BATCH_AGE_S, value: "300"}   # 5 min (2026-11-22): 5x fewer lakeFS commits and branches; the silver DAG runs at :15 to match
+            # 15 min (2026-11-22, ADR-020 of the modbus project): lakeFS keeps every commit's metadata forever, so fewer
+            # commits = less metadata (3x less than 5 min). ~13k rows per 15 min; the row cap only bites when catching up
+            # (it was 5000, which would close a batch every ~6 min with the new signals). The silver DAG runs at :25 to match.
+            - {name: BATCH_ROWS, value: "20000"}
+            - {name: BATCH_AGE_S, value: "900"}
             - {name: WRITE_INTERVAL_S, value: "10"}
           envFrom:
             - secretRef: {name: ingest-db}
