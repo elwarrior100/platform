@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: collector
-          image: ghcr.io/elwarrior100/modbus-ingest:f5b17ea025676c34fceb26890553312af47f1be0
+          image: ghcr.io/elwarrior100/modbus-ingest:82f3868ffb018393c3f854d1d606487606b57228
           imagePullPolicy: IfNotPresent
           args: ["collect"]
           env:
@@ -45,13 +45,13 @@ spec:
     spec:
       containers:
         - name: writer
-          image: ghcr.io/elwarrior100/modbus-ingest:f5b17ea025676c34fceb26890553312af47f1be0
+          image: ghcr.io/elwarrior100/modbus-ingest:82f3868ffb018393c3f854d1d606487606b57228
           imagePullPolicy: IfNotPresent
           args: ["write"]
           env:
             - {name: LAKEFS_ENDPOINT, value: "http://lakefs.data.svc.cluster.local:8000"}
             - {name: BATCH_ROWS, value: "5000"}
-            - {name: BATCH_AGE_S, value: "60"}
+            - {name: BATCH_AGE_S, value: "300"}   # 5 min (2026-11-22): 5x fewer lakeFS commits and branches; the silver DAG runs at :15 to match
             - {name: WRITE_INTERVAL_S, value: "10"}
           envFrom:
             - secretRef: {name: ingest-db}
