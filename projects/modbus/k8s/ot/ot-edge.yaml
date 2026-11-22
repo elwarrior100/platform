@@ -49,11 +49,17 @@ spec:
     spec:
       containers:
         - name: simulator
-          image: ghcr.io/elwarrior100/modbus-ot-edge:f5b17ea025676c34fceb26890553312af47f1be0
+          image: ghcr.io/elwarrior100/modbus-ot-edge:2ef02381a5cb1cd79c9544c347ed48016afbced5
           imagePullPolicy: IfNotPresent
           env:
             - name: SCENARIOS_FILE
               value: /etc/ot/scenarios.yaml
+            # weekly planned stops in Lisbon time (simulator plan.yaml) and on average one random trip per asset per
+            # running day, so availability, MTBF and MTTR have real events (ADR-019 D11 of the modbus project)
+            - name: PLAN
+              value: builtin
+            - name: TRIP_RATE_PER_DAY
+              value: "1"
           ports:
             - containerPort: 5020
             - containerPort: 8080
