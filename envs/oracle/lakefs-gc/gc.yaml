@@ -14,6 +14,9 @@
 # Runs in the data namespace, where the lakeFS and SeaweedFS keys already are; that namespace cannot leave the cluster
 # (egress: DNS and its own pods), so the jars are baked into the image (images/lakefs-gc), never downloaded here.
 # The keys reach Spark through a properties file written at start, not on the command line.
+# lakeFS API timeouts (2026-11-22): without them the client gives up after its HTTP library's short default. The first
+# scheduled run failed on "prepare uncommitted" (lakeFS scans every branch in Postgres; 4,464 etl-* branches by then).
+# 30 min to read, well inside the job's 3 h deadline.
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -69,6 +72,8 @@ spec:
                   spark.hadoop.lakefs.api.url=http://lakefs.data.svc.cluster.local:8000/api/v1
                   spark.hadoop.lakefs.api.access_key=$LAKEFS_ACCESS_KEY_ID
                   spark.hadoop.lakefs.api.secret_key=$LAKEFS_SECRET_ACCESS_KEY
+                  spark.hadoop.lakefs.api.connection.timeout_seconds=60
+                  spark.hadoop.lakefs.api.read.timeout_seconds=1800
                   EOF
                   if [ -n "$GC_MARK_ID" ]; then
                     printf 'spark.hadoop.lakefs.gc.do_mark=false\nspark.hadoop.lakefs.gc.mark_id=%s\nspark.hadoop.lakefs.gc.do_sweep=true\n' "$GC_MARK_ID" >> /tmp/gc.properties
