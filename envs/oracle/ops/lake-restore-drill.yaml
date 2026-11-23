@@ -52,7 +52,7 @@ spec:
                   echo "dump set: $LATEST"
                   for f in globals.sql lakefs.dump; do oci os object get -ns $NS -bn platform-backups --name "$LATEST/$f" --file /work/$f >/dev/null; done
                   echo "$LATEST" > /work/SET
-                  for _ in 1 2 3 4 5 6; do REGION=$(python3 -c 'import json,urllib.request; print(json.load(urllib.request.urlopen(urllib.request.Request("http://169.254.169.254/opc/v2/instance/", headers={"Authorization": "Bearer Oracle"}), timeout=10))["canonicalRegionName"])') && break; sleep 5; done; [ -n "$REGION" ] || { echo "instance metadata unreachable" >&2; exit 1; }   # 6 tries: new pods wait a few s for the network (22-11)
+                  for _ in 1 2 3 4 5 6; do REGION=$(python3 -c 'import json,urllib.request; print(json.load(urllib.request.urlopen(urllib.request.Request("http://169.254.169.254/opc/v2/instance/", headers={"Authorization": "Bearer Oracle"}), timeout=10))["canonicalRegionName"])' 2>/dev/null) && break; sleep 5; done; [ -n "$REGION" ] || { echo "instance metadata unreachable" >&2; exit 1; }   # 6 tries: new pods wait a few s for the network (22-11)
                   printf 'export RCLONE_CONFIG_OCI_NAMESPACE=%s RCLONE_CONFIG_OCI_REGION=%s\n' "$NS" "$REGION" > /work/oci.env
               volumeMounts: [{name: work, mountPath: /work}, {name: tmp, mountPath: /tmp}]
               securityContext: {runAsUser: 1000, allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}, readOnlyRootFilesystem: true}
@@ -208,7 +208,7 @@ spec:
                   sys.exit(1 if failed else 0)
                   PY
                   rc=$?
-                  for _ in 1 2 3 4 5 6; do MD=$(python3 -c 'import json,urllib.request; d=json.load(urllib.request.urlopen(urllib.request.Request("http://169.254.169.254/opc/v2/instance/", headers={"Authorization": "Bearer Oracle"}), timeout=10)); print(d["compartmentId"], d["canonicalRegionName"])') && break; sleep 5; done; [ -n "$MD" ] || { echo "instance metadata unreachable" >&2; exit 1; }   # 6 tries: new pods wait a few s for the network (22-11)
+                  for _ in 1 2 3 4 5 6; do MD=$(python3 -c 'import json,urllib.request; d=json.load(urllib.request.urlopen(urllib.request.Request("http://169.254.169.254/opc/v2/instance/", headers={"Authorization": "Bearer Oracle"}), timeout=10)); print(d["compartmentId"], d["canonicalRegionName"])' 2>/dev/null) && break; sleep 5; done; [ -n "$MD" ] || { echo "instance metadata unreachable" >&2; exit 1; }   # 6 tries: new pods wait a few s for the network (22-11)
                   COMP=${MD% *}; REGION=${MD#* }; VALUE=$([ $rc -eq 0 ] && echo 1 || echo 0)
                   oci monitoring metric-data post --endpoint "https://telemetry-ingestion.$REGION.oraclecloud.com" \
                     --metric-data "[{\"namespace\":\"platform_backup\",\"compartmentId\":\"$COMP\",\"name\":\"lake_drill_success\",\"dimensions\":{\"cluster\":\"oracle\"},\"datapoints\":[{\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"value\":$VALUE}]}]" >/dev/null

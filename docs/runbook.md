@@ -224,6 +224,9 @@ Weekly CronJob `data/lakefs-gc` (Sundays 05:00 UTC, Oracle only), **mark and swe
 or nothing for 2 days): it counts a scheduled run, or a whole cycle done by hand (a reviewed sweep with `GC_MARK_ID`,
 or a manual `GC_SWEEP=true` run); a manual mark-only run never counts. If the scheduled run fails, a mark (step 1)
 plus a reviewed sweep (step 2) keeps the alarm quiet for 8 days.
+A manual run is always `kubectl -n data create job <name> --from=cronjob/lakefs-gc` (with `GC_SWEEP=true` set on it
+for a whole cycle): only a Job made that way carries the `cronjob.kubernetes.io/instantiate=manual` annotation the
+heartbeat looks for; a Job applied from a hand-written YAML does not count and the alarm would fire.
 **Watch it grow:** the mark reads every commit (~240 a day). Note each Sunday its duration and peak memory
 (`kubectl -n data logs`, `kubectl top`): 11.5 min and 874 MiB on 2026-11-22, deadline 3 h, limit 1536 Mi. Above
 1 h, raise the driver memory in `envs/oracle/lakefs-gc/gc.yaml`; a lasting cap (e.g. one lakeFS repository per year) is still to be decided (project ADR-021, not written yet).

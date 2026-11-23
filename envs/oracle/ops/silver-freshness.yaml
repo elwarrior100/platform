@@ -34,7 +34,7 @@ spec:
                 # Hours a person looked at and accepted as holes (comma-separated, YYYY-MM-DDTHH, UTC): a gate-refused
                 # hour after a pause stays a hole on purpose, and without this the alarm repeats for 48 h (22-11 review).
                 # Add an hour here only after deciding it will not be re-run; it drops out of the window by itself.
-                - {name: SILVER_ACCEPTED_GAPS, value: "2026-11-21T10"}
+                - {name: SILVER_ACCEPTED_GAPS, value: ""}   # 2026-11-21T10 saiu da janela de 48 h a 23-11
               command: [sh, -ec]
               args:
                 - |
@@ -86,7 +86,7 @@ spec:
                   PY
                   )
                   echo "newest silver merge: $AGE s ago; silver gap hours (48 h): $GAPS"
-                  for _ in 1 2 3 4 5 6; do MD=$(python3 -c 'import json,urllib.request; d=json.load(urllib.request.urlopen(urllib.request.Request("http://169.254.169.254/opc/v2/instance/", headers={"Authorization": "Bearer Oracle"}), timeout=10)); print(d["compartmentId"], d["canonicalRegionName"])') && break; sleep 5; done; [ -n "$MD" ] || { echo "instance metadata unreachable" >&2; exit 1; }   # 6 tries: new pods wait a few s for the network (22-11)
+                  for _ in 1 2 3 4 5 6; do MD=$(python3 -c 'import json,urllib.request; d=json.load(urllib.request.urlopen(urllib.request.Request("http://169.254.169.254/opc/v2/instance/", headers={"Authorization": "Bearer Oracle"}), timeout=10)); print(d["compartmentId"], d["canonicalRegionName"])' 2>/dev/null) && break; sleep 5; done; [ -n "$MD" ] || { echo "instance metadata unreachable" >&2; exit 1; }   # 6 tries: new pods wait a few s for the network (22-11)
                   COMP=${MD% *}; REGION=${MD#* }
                   oci monitoring metric-data post --endpoint "https://telemetry-ingestion.$REGION.oraclecloud.com" \
                     --metric-data "[{\"namespace\":\"platform_pipeline\",\"compartmentId\":\"$COMP\",\"name\":\"silver_gap_hours\",\"dimensions\":{\"cluster\":\"oracle\"},\"datapoints\":[{\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"value\":$GAPS}]}]" >/dev/null

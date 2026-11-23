@@ -123,7 +123,7 @@ spec:
                                      "datapoints": [{"timestamp": stamp, "value": age}]})
                   print(json.dumps(points))
                   PY
-                  for _ in 1 2 3 4 5 6; do REGION=$(python3 -c 'import json,urllib.request; print(json.load(urllib.request.urlopen(urllib.request.Request("http://169.254.169.254/opc/v2/instance/", headers={"Authorization": "Bearer Oracle"}), timeout=10))["canonicalRegionName"])') && break; sleep 5; done; [ -n "$REGION" ] || { echo "instance metadata unreachable" >&2; exit 1; }   # 6 tries: new pods wait a few s for the network (22-11)
+                  for _ in 1 2 3 4 5 6; do REGION=$(python3 -c 'import json,urllib.request; print(json.load(urllib.request.urlopen(urllib.request.Request("http://169.254.169.254/opc/v2/instance/", headers={"Authorization": "Bearer Oracle"}), timeout=10))["canonicalRegionName"])' 2>/dev/null) && break; sleep 5; done; [ -n "$REGION" ] || { echo "instance metadata unreachable" >&2; exit 1; }   # 6 tries: new pods wait a few s for the network (22-11)
                   oci monitoring metric-data post --endpoint "https://telemetry-ingestion.$REGION.oraclecloud.com" \
                     --metric-data "file:///tmp/metrics.json" >/dev/null
                   echo "posted job_age_hours for 5 jobs"

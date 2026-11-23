@@ -102,7 +102,7 @@ spec:
                   print(1 if ok or young else 0)
                   PY
                   )
-                  for _ in 1 2 3 4 5 6; do MD=$(python3 -c 'import json,urllib.request; d=json.load(urllib.request.urlopen(urllib.request.Request("http://169.254.169.254/opc/v2/instance/", headers={"Authorization": "Bearer Oracle"}), timeout=10)); print(d["compartmentId"], d["canonicalRegionName"])') && break; sleep 5; done; [ -n "$MD" ] || { echo "instance metadata unreachable" >&2; exit 1; }   # 6 tries: new pods wait a few s for the network (22-11)
+                  for _ in 1 2 3 4 5 6; do MD=$(python3 -c 'import json,urllib.request; d=json.load(urllib.request.urlopen(urllib.request.Request("http://169.254.169.254/opc/v2/instance/", headers={"Authorization": "Bearer Oracle"}), timeout=10)); print(d["compartmentId"], d["canonicalRegionName"])' 2>/dev/null) && break; sleep 5; done; [ -n "$MD" ] || { echo "instance metadata unreachable" >&2; exit 1; }   # 6 tries: new pods wait a few s for the network (22-11)
                   COMP=${MD% *}; REGION=${MD#* }
                   oci monitoring metric-data post --endpoint "https://telemetry-ingestion.$REGION.oraclecloud.com" \
                     --metric-data "[{\"namespace\":\"platform_backup\",\"compartmentId\":\"$COMP\",\"name\":\"lake_gc_success\",\"dimensions\":{\"cluster\":\"oracle\"},\"datapoints\":[{\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"value\":$VALUE}]}]" >/dev/null
