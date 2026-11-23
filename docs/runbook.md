@@ -86,7 +86,7 @@ Order matters; every step is from the repositories, the vault and Object Storage
    `export KUBECONFIG=~/.kube/oracle.yaml` for EVERY step below (the scripts default to the local cluster).
 4. `./scripts/install-argocd.sh`, `kubectl apply -f envs/oracle/root-app.yaml`, `./scripts/wait-secrets.sh` (the
    External Secrets Operator reads the vault with the new instance principal).
-5. `./scripts/bootstrap-postgres-ingest.sh`; restore the databases from the newest COMPLETE dump (`_COMPLETE`):
+5. `./scripts/bootstrap-postgres-ingest.sh` and `./scripts/bootstrap-postgres-serving.sh`; restore the databases from the newest COMPLETE dump (`_COMPLETE`):
    `globals.sql` first (roles), then `pg_restore --create -d postgres` per database (`--create`: the databases do not
    exist yet), then restart lakeFS, Airflow, OpenMetadata.
 6. Restore the lake objects (section "Restore the lake"), BEFORE starting the writer.

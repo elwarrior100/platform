@@ -95,6 +95,9 @@ workers:
     # OpenMetadata (catalog and G2 history, best effort): optional, so a missing token never blocks a task
     - {name: OPENMETADATA_URL, value: "http://openmetadata.openmetadata.svc.cluster.local:8585"}
     - {name: OPENMETADATA_TOKEN, valueFrom: {secretKeyRef: {name: openmetadata-bot, key: OPENMETADATA_TOKEN, optional: true}}}
+    # the BI database (modbus ADR-022, S1): gold_daily copies each gold release there; optional, so without it the
+    # task "serve" only says so and every other task is unaffected
+    - {name: SERVING_DATABASE_URL, valueFrom: {secretKeyRef: {name: serving-db, key: SERVING_DATABASE_URL, optional: true}}}
   kubernetes:                  # with the KubernetesExecutor these are the limits of each task pod
     resources:
       requests: {cpu: 100m, memory: 384Mi}

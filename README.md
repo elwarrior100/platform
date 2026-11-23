@@ -95,7 +95,7 @@ docs/runbook.md        what to do when something happens (alarms, restores, rebu
    corrupted lakeFS/SeaweedFS before.
 2. `./scripts/install-argocd.sh`, then `kubectl apply -f envs/local/root-app.yaml`.
 3. `./scripts/eso-local-key.sh` (the one key the External Secrets Operator needs locally), then `./scripts/wait-secrets.sh`.
-4. `./scripts/bootstrap-postgres-ingest.sh`, `./scripts/install-airflow.sh`, `./scripts/install-openmetadata.sh`
+4. `./scripts/bootstrap-postgres-ingest.sh`, `./scripts/bootstrap-postgres-serving.sh`, `./scripts/install-airflow.sh`, `./scripts/install-openmetadata.sh`
    (they create database roles; Argo CD installs the applications themselves).
 5. `./scripts/lakefs-repo.sh industrial-lake lake` (the project's lakeFS repository, its protection and GC rules).
 6. `./scripts/argocd-admin-password.sh`, `./scripts/openmetadata-admin-password.sh` (passwords from the vault).
@@ -190,7 +190,8 @@ The runbook's "Safeguards" table lists every guard.
 | `install-argocd.sh` | install/upgrade Argo CD and create the `bootstrap` project |
 | `eso-local-key.sh` | the External Secrets key of the local cluster |
 | `wait-secrets.sh` | wait until every Secret came from the vault |
-| `bootstrap-postgres-ingest.sh` | the `ingest` database and role |
+| `bootstrap-postgres-ingest.sh` | the `ingest` database and role (and the live path: TimescaleDB, schema `live`, role `grafana_live`) |
+| `bootstrap-postgres-serving.sh` | the BI database `serving` and its role (gold releases, modbus ADR-022) |
 | `install-airflow.sh` / `install-openmetadata.sh` | database roles (and OpenSearch sysctl); Argo CD installs the apps |
 | `lakefs-repo.sh` | a project's lakeFS repository, branch protection, GC rules |
 | `argocd-admin-password.sh` / `openmetadata-admin-password.sh` | admin passwords from the vault |

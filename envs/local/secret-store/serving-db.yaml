@@ -1,0 +1,20 @@
+# The BI database "serving" (modbus ADR-022, S1: the gold releases for Superset and Grafana), for the Airflow TASK pods
+# (gold_daily, task serve). Password from the vault (scripts/vault-new-password.sh airflow-serving-db-local serving);
+# the role and the database are made by scripts/bootstrap-postgres-serving.sh.
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: serving-db
+  namespace: airflow
+spec:
+  refreshInterval: 1h
+  secretStoreRef: {kind: ClusterSecretStore, name: oci-vault}
+  target:
+    name: serving-db
+    creationPolicy: Orphan
+    deletionPolicy: Retain
+    template:
+      data:
+        SERVING_DATABASE_URL: "postgresql://serving:{{ .password | urlquery }}@postgres.data.svc.cluster.local:5432/serving"
+  data:
+    - {secretKey: password, remoteRef: {key: airflow-serving-db-local, property: password}}
