@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: collector
-          image: ghcr.io/elwarrior100/modbus-ingest:2ef02381a5cb1cd79c9544c347ed48016afbced5
+          image: ghcr.io/elwarrior100/modbus-ingest:915a3df9dab44b78f92de67d1bb39a80c34f72cc
           imagePullPolicy: IfNotPresent
           args: ["collect"]
           env:
@@ -45,7 +45,7 @@ spec:
     spec:
       containers:
         - name: writer
-          image: ghcr.io/elwarrior100/modbus-ingest:2ef02381a5cb1cd79c9544c347ed48016afbced5
+          image: ghcr.io/elwarrior100/modbus-ingest:915a3df9dab44b78f92de67d1bb39a80c34f72cc
           imagePullPolicy: IfNotPresent
           args: ["write"]
           env:
