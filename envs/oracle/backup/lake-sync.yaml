@@ -40,7 +40,7 @@ spec:
               command: [sh, -ec]
               args:
                 - |
-                  REGION=$(python3 -c 'import json,urllib.request; print(json.load(urllib.request.urlopen(urllib.request.Request("http://169.254.169.254/opc/v2/instance/", headers={"Authorization": "Bearer Oracle"})))["canonicalRegionName"])')
+                  for _ in 1 2 3 4 5 6; do REGION=$(python3 -c 'import json,urllib.request; print(json.load(urllib.request.urlopen(urllib.request.Request("http://169.254.169.254/opc/v2/instance/", headers={"Authorization": "Bearer Oracle"}), timeout=10))["canonicalRegionName"])') && break; sleep 5; done; [ -n "$REGION" ] || { echo "instance metadata unreachable" >&2; exit 1; }   # 6 tries: new pods wait a few s for the network (22-11)
                   NS=$(oci os ns get --query data --raw-output)
                   COMP=$(oci os bucket get -ns "$NS" --bucket-name platform-lake-backup --query 'data."compartment-id"' --raw-output)
                   printf 'export RCLONE_CONFIG_OCI_NAMESPACE=%s RCLONE_CONFIG_OCI_COMPARTMENT=%s RCLONE_CONFIG_OCI_REGION=%s\n' "$NS" "$COMP" "$REGION" > /cfg/oci.env
@@ -135,7 +135,7 @@ spec:
               command: [sh, -ec]
               args:
                 - |
-                  MD=$(python3 -c 'import json,urllib.request; d=json.load(urllib.request.urlopen(urllib.request.Request("http://169.254.169.254/opc/v2/instance/", headers={"Authorization": "Bearer Oracle"}))); print(d["compartmentId"], d["canonicalRegionName"])')
+                  for _ in 1 2 3 4 5 6; do MD=$(python3 -c 'import json,urllib.request; d=json.load(urllib.request.urlopen(urllib.request.Request("http://169.254.169.254/opc/v2/instance/", headers={"Authorization": "Bearer Oracle"}), timeout=10)); print(d["compartmentId"], d["canonicalRegionName"])') && break; sleep 5; done; [ -n "$MD" ] || { echo "instance metadata unreachable" >&2; exit 1; }   # 6 tries: new pods wait a few s for the network (22-11)
                   set -- $MD
                   oci monitoring metric-data post --endpoint "https://telemetry-ingestion.$2.oraclecloud.com" \
                     --metric-data "[{\"namespace\":\"platform_backup\",\"compartmentId\":\"$1\",\"name\":\"lake_sync_success\",\"dimensions\":{\"cluster\":\"oracle\"},\"datapoints\":[{\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"value\":1}]}]" >/dev/null

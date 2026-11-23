@@ -229,18 +229,20 @@ resource "oci_monitoring_alarm" "storage_total_high" {
 }
 
 # Always Free includes 50,000 Object Storage requests a month; beyond that each 10k costs money. The lake copy once
-# needed ~17k a day (ADR-016): warn when a day goes over 1,500 (a 45k/month pace), before anything is charged.
+# needed ~17k a day (ADR-016). A 1-hour window, not [1d] (a day-long window costs Monitoring reads at every evaluation,
+# PLAN item 31): the busiest hour of a normal week was 123 requests (2026-11-21, a manual bundle test; usually < 40),
+# the 15-11 incident ran at ~1,800/h. A slow creep below 200/h costs cents and the budget warns at the first cent.
 resource "oci_monitoring_alarm" "objectstorage_requests_high" {
   compartment_id               = var.compartment_id
   metric_compartment_id        = oci_identity_compartment.backups.id
   display_name                 = "platform: Object Storage requests above the free pace"
   namespace                    = "oci_objectstorage"
-  query                        = "AllRequests[1d].grouping().sum() > 1500"
+  query                        = "AllRequests[1h].grouping().sum() > 200"
   severity                     = "WARNING"
   pending_duration             = "PT5M"
   is_enabled                   = true
   destinations                 = [oci_ons_notification_topic.alerts.id]
-  body                         = "More than 1,500 Object Storage requests in a day (Always Free: 50,000 a month). Check what ran: kubectl -n backup get jobs; kubectl -n ops get jobs; the lake copy should be ~6 requests a night (ADR-016)."
+  body                         = "More than 200 Object Storage requests in an hour (Always Free: 50,000 a month). Check what ran: kubectl -n backup get jobs; kubectl -n ops get jobs; the lake copy should be ~6 requests a night (ADR-016)."
   repeat_notification_duration = "PT24H"
 }
 

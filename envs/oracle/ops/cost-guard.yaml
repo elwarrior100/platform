@@ -58,7 +58,7 @@ spec:
               command: [sh, -ec]
               args:
                 - |
-                  MD=$(python3 -c 'import json,urllib.request; d=json.load(urllib.request.urlopen(urllib.request.Request("http://169.254.169.254/opc/v2/instance/", headers={"Authorization": "Bearer Oracle"}))); print(d["compartmentId"], d["canonicalRegionName"], d["id"], d.get("freeformTags", {}).get("cost-guard-ack", "-"))')
+                  for _ in 1 2 3 4 5 6; do MD=$(python3 -c 'import json,urllib.request; d=json.load(urllib.request.urlopen(urllib.request.Request("http://169.254.169.254/opc/v2/instance/", headers={"Authorization": "Bearer Oracle"}), timeout=10)); print(d["compartmentId"], d["canonicalRegionName"], d["id"], d.get("freeformTags", {}).get("cost-guard-ack", "-"))') && break; sleep 5; done; [ -n "$MD" ] || { echo "instance metadata unreachable" >&2; exit 1; }   # 6 tries: new pods wait a few s for the network (22-11)
                   set -- $MD; COMP=$1; REGION=$2; INSTANCE=$3; ACK=$4   # the VM lives in the root compartment: COMP is the tenancy
                   # ACK is "<YYYY-MM>:<spend when resumed>" (scripts/cost-guard-resume.sh), or "-"
                   MONTH=$(date -u +%Y-%m)

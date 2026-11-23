@@ -28,7 +28,13 @@ spec:
             - name: check
               image: ghcr.io/oracle/oci-cli:latest@sha256:2127c2f50ee1353fa78cbf538ab91ffaccc0d02b6d0b4144530cef6ee69709f5
               envFrom: [{secretRef: {name: lakefs-auth}}]
-              env: [{name: OCI_CLI_AUTH, value: instance_principal}, {name: HOME, value: /tmp}]
+              env:
+                - {name: OCI_CLI_AUTH, value: instance_principal}
+                - {name: HOME, value: /tmp}
+                # Hours a person looked at and accepted as holes (comma-separated, YYYY-MM-DDTHH, UTC): a gate-refused
+                # hour after a pause stays a hole on purpose, and without this the alarm repeats for 48 h (22-11 review).
+                # Add an hour here only after deciding it will not be re-run; it drops out of the window by itself.
+                - {name: SILVER_ACCEPTED_GAPS, value: "2026-11-21T10"}
               command: [sh, -ec]
               args:
                 - |
@@ -62,8 +68,11 @@ spec:
                           after = r["pagination"]["next_offset"]
                   now = datetime.datetime.now(datetime.timezone.utc).replace(minute=0, second=0, microsecond=0)
                   missing, late = [], []
+                  accepted = {x.strip() for x in os.environ.get("SILVER_ACCEPTED_GAPS", "").split(",") if x.strip()}
                   for h in range(2, 50):               # closed hours, 2 to 49 hours ago
                       t = now - datetime.timedelta(hours=h)
+                      if f"{t:%Y-%m-%dT%H}" in accepted:
+                          print("accepted hole (SILVER_ACCEPTED_GAPS):", f"{t:%Y-%m-%dT%H}", file=sys.stderr); continue
                       part = f"dt={t:%Y-%m-%d}/hour={t:%H}/"
                       bronze = [o for o in ls("bronze/" + part) if o["path"].endswith(".parquet")]
                       if not bronze: continue
@@ -77,7 +86,7 @@ spec:
                   PY
                   )
                   echo "newest silver merge: $AGE s ago; silver gap hours (48 h): $GAPS"
-                  MD=$(python3 -c 'import json,urllib.request; d=json.load(urllib.request.urlopen(urllib.request.Request("http://169.254.169.254/opc/v2/instance/", headers={"Authorization": "Bearer Oracle"}))); print(d["compartmentId"], d["canonicalRegionName"])')
+                  for _ in 1 2 3 4 5 6; do MD=$(python3 -c 'import json,urllib.request; d=json.load(urllib.request.urlopen(urllib.request.Request("http://169.254.169.254/opc/v2/instance/", headers={"Authorization": "Bearer Oracle"}), timeout=10)); print(d["compartmentId"], d["canonicalRegionName"])') && break; sleep 5; done; [ -n "$MD" ] || { echo "instance metadata unreachable" >&2; exit 1; }   # 6 tries: new pods wait a few s for the network (22-11)
                   COMP=${MD% *}; REGION=${MD#* }
                   oci monitoring metric-data post --endpoint "https://telemetry-ingestion.$REGION.oraclecloud.com" \
                     --metric-data "[{\"namespace\":\"platform_pipeline\",\"compartmentId\":\"$COMP\",\"name\":\"silver_gap_hours\",\"dimensions\":{\"cluster\":\"oracle\"},\"datapoints\":[{\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"value\":$GAPS}]}]" >/dev/null

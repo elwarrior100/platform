@@ -13,6 +13,24 @@ to the local Lima cluster).
 2. In this repository, set that SHA in `projects/modbus/k8s/*` (ingest, ot) and, for the pipelines, in
    `platform/airflow/values.yaml` (both `MODBUS_PIPELINES_IMAGE` and the DAG bundle `tracking_ref`, in one commit).
 3. Deploy as above (local first, then promote).
+4. A new signal or node (ot-edge publishes more) goes in TWO commits: first ingest + pipelines (the writer's G1
+   `nodes.yaml` and the silver catalog must know it, or the batches are rejected and the silver fails), then ot-edge.
+   Promote them to Oracle the same way, one after the other (2026-11-22, ADR-019 of the project).
+5. Before promoting a new image to Oracle, pull it first so the switch is seconds, not minutes (a 685 MiB pull took
+   ~13 min): a throwaway pod in the namespace with that image and `command: ["true"]`, then delete it. On 22-11 the
+   ot-edge switch went from 6 min of missing data (local, no pre-pull) to 16 s.
+
+## Ingestion and silver timing (2026-11-22, ADR-020 of the project)
+- The writer closes a batch every **15 min** (`BATCH_AGE_S=900`) or at 20,000 rows (`BATCH_ROWS`, only reached when
+  catching up): one lakeFS commit + merge per batch. lakeFS keeps every commit's metadata forever (~80% of the lake),
+  so fewer commits = less growth. Do not lower it without re-reading ADR-020.
+- The silver of hour H runs at **H+1:25** (`silver_hourly`, `25 * * * *`): the last batch of hour H reaches bronze by
+  ~H+1:15, so there are ~10 min of margin. Writer age and DAG minute change together, in one commit.
+- If bronze of an hour arrives after its silver ran (writer stopped, catching up): the alarm "silver hours missing or
+  late" fires two hours later; clear that hour's `silver_hourly` run in Airflow (delete a leftover
+  `silver-<dt>-<hh>` branch first). Changing the DAG minute re-runs the last hour once: harmless (idempotent).
+- A gate-refused hour that will NOT be re-run (a real hole, e.g. after a pause): add it to `SILVER_ACCEPTED_GAPS` in
+  `envs/oracle/ops/silver-freshness.yaml`, or the alarm repeats for 48 h.
 
 ## The Oracle VM rebooted
 - Nothing to do in principle: the kubelet stops pods gracefully (90 s) and everything comes back.
@@ -100,15 +118,18 @@ password manager.
 | lake restore drill missing / failed | `kubectl -n ops get jobs`; logs of the newest `lake-restore-drill` job (containers `restore-objects`, `check`) |
 | lakeFS GC failed / check missing | `kubectl -n data get jobs`; logs of the newest `lakefs-gc` job; `kubectl -n ops logs` of the last gc-freshness job |
 | silver not updated for 3 h | Airflow `silver_hourly` runs (a G2 fail is expected for incomplete hours); writer logs; `kubectl -n ops logs` of the last freshness job |
+| silver hours missing or late | the `silver missing:` / `late:` lines in the newest `ops/silver-freshness` job; re-run the hour (section "Ingestion and silver timing"), or accept it in `SILVER_ACCEPTED_GAPS` |
 | disk above 80% / disk check missing | `ssh` the VM: `df -h /`, `sudo k3s crictl rmi --prune`; `kubectl -n ops get jobs` (node-health) |
 | Prometheus alerts firing | which ones: lines `firing:` in the logs of the newest `ops/node-health` job; then that alert's runbook link in Prometheus /alerts |
 | bucket above N GB / all Object Storage above 15 GB | `oci os object list` on the bucket; dumps expire after 7 days, lake bundles and catalogs after 9 days: growth here means the lake itself grew (retention/GC, ADR-015) |
-| Object Storage requests above 1,500 in a day | who made them: the lake copy should make ~6 a night, the drill a few a day; a manual prune or restore is expected to trip it (ADR-016) |
+| Object Storage requests above 200 in an hour | who made them: the lake copy should make ~6 a night, the drill a few a day; a manual prune or restore is expected to trip it (ADR-016) |
 | cost guard: COST LIMIT / not running | section "Cost kill-switch tripped" below; "not running": `kubectl -n ops logs` of the newest `cost-guard` job |
 
 ## A new job pod cannot connect for its first seconds
 kube-router adds a new pod to the network-policy allow-lists a few seconds after it starts. Jobs must retry their
 first connection (pg-backup waits for `pg_isready`). Symptom: "Connection refused" that disappears on a retry.
+The instance-metadata call (`169.254.169.254`, for the compartment and region) retries too: 6 tries, 10 s each
+(2026-11-22: `job-freshness` failed once on "No route to host" right after a rollout).
 
 ## Restore the lake (lakeFS metadata + objects)
 It is drilled every day at 04:15 UTC (`ops/lake-restore-drill`: rebuilds lakeFS from the newest dump and the object
@@ -198,8 +219,15 @@ machine re-tagged `tag:platform`, the five Services defined (listed at the end o
 `ui.sh` remain the fallback. No Kubernetes operator on purpose: its proxies run privileged (ADR-014).
 
 ## lakeFS garbage collection
-Weekly CronJob `data/lakefs-gc` (Sundays 05:00 UTC, Oracle only), mark only (`GC_SWEEP=false`) until a person has
-read a report. Heartbeat: `ops/gc-freshness` posts `lake_gc_success` daily (alarms: 0, or nothing for 2 days).
+Weekly CronJob `data/lakefs-gc` (Sundays 05:00 UTC, Oracle only), **mark and sweep** (`GC_SWEEP=true` since
+2026-11-22, after the first reviewed sweep). Heartbeat: `ops/gc-freshness` posts `lake_gc_success` daily (alarms: 0,
+or nothing for 2 days): it counts a scheduled run, or a whole cycle done by hand (a reviewed sweep with `GC_MARK_ID`,
+or a manual `GC_SWEEP=true` run); a manual mark-only run never counts. If the scheduled run fails, a mark (step 1)
+plus a reviewed sweep (step 2) keeps the alarm quiet for 8 days.
+**Watch it grow:** the mark reads every commit (~240 a day). Note each Sunday its duration and peak memory
+(`kubectl -n data logs`, `kubectl top`): 11.5 min and 874 MiB on 2026-11-22, deadline 3 h, limit 1536 Mi. Above
+1 h, raise the driver memory in `envs/oracle/lakefs-gc/gc.yaml`; a lasting cap (e.g. one lakeFS repository per year) is still to be decided (project ADR-021, not written yet).
+The steps below are how the first sweep was done (and how to sweep by hand after a failed run):
 1. Read the report: `kubectl -n data logs job/<latest lakefs-gc job> | grep 'Report summary'`
    (`run_id` = the mark id, `num_deleted_objects` = how many it would delete).
 2. First real deletion, of exactly that list: `KUBECONFIG=~/.kube/oracle.yaml ./scripts/lakefs-gc-sweep.sh <mark id>`.
