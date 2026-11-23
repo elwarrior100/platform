@@ -52,7 +52,13 @@ spec:
           # (each event is inserted, then updated with its batch_id; random UUID index pages). lz4 compresses those
           # images and a 15 min checkpoint writes each hot page less often. Crash recovery replays a bit more WAL
           # (seconds). The nightly pg_dump is unaffected.
-          args: ["-c", "wal_compression=lz4", "-c", "checkpoint_timeout=15min", "-c", "max_wal_size=2GB"]
+          # TimescaleDB (modbus ADR-022, the live hypertable): its background jobs (compression after 1 day, retention
+          # of 7 days) each need a worker; 4 are plenty for one hypertable, and max_worker_processes must hold them
+          # plus the launcher, one scheduler per database with the extension and Postgres' own parallel workers.
+          # Telemetry off: nothing leaves the VM.
+          args: ["-c", "wal_compression=lz4", "-c", "checkpoint_timeout=15min", "-c", "max_wal_size=2GB",
+                 "-c", "max_worker_processes=16", "-c", "timescaledb.max_background_workers=4",
+                 "-c", "timescaledb.telemetry_level=off"]
           ports:
             - containerPort: 5432
           env:

@@ -49,7 +49,11 @@ spec:
                   for i in $(seq 1 30); do pg_isready -q -h $H -p 5432 && break; sleep 2; done
                   pg_dumpall -h $H -U postgres --globals-only > /dump/globals.sql
                   for db in $(psql -h $H -U postgres -At -c "select datname from pg_database where not datistemplate and datname <> 'postgres'"); do
-                    pg_dump -h $H -U postgres -Fc -f /dump/$db.dump $db
+                    # the live hypertable (modbus ADR-022) is left out: it rebuilds itself (the collector installs it at
+                    # start-up), its history is in bronze/silver, and a TimescaleDB catalog in a dump needs a special
+                    # restore. The spool's trigger stays in the dump and is harmless without it (it never fails an insert).
+                    pg_dump -h $H -U postgres -Fc --exclude-extension=timescaledb -N live -N '_timescaledb*' \
+                      -N 'timescaledb_*' -f /dump/$db.dump $db
                   done
                   ls -l /dump
               volumeMounts: [{name: dump, mountPath: /dump}, {name: tmp, mountPath: /tmp}]

@@ -1,0 +1,14 @@
+# Password of the read-only PostgreSQL role grafana_live (modbus ADR-022: Grafana reads the live hypertable), from the
+# vault (scripts/vault-new-password.sh monitoring-grafana-live-local grafana_live). Grafana gets it as an environment
+# variable and its datasource file refers to it; scripts/bootstrap-postgres-ingest.sh sets it on the role.
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: grafana-live
+  namespace: monitoring
+spec:
+  refreshInterval: 1h
+  secretStoreRef: {kind: ClusterSecretStore, name: oci-vault}
+  target: {name: grafana-live, creationPolicy: Orphan, deletionPolicy: Retain}
+  data:
+    - {secretKey: GRAFANA_LIVE_PASSWORD, remoteRef: {key: monitoring-grafana-live-local, property: password}}

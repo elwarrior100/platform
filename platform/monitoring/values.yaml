@@ -47,7 +47,25 @@ grafana:
     # Memory (2026-11-16): Grafana starts one backend process per bundled datasource (14, ~5 MB each). Only Prometheus
     # is used; these are disabled (re-enable one by removing it here if a project needs it).
     plugins:
-      disable_plugins: jaeger,loki,mssql,mysql,opentsdb,tempo,zipkin,grafana-pyroscope-datasource,stackdriver,cloudwatch,elasticsearch,influxdb,grafana-postgresql-datasource
+      disable_plugins: jaeger,loki,mssql,mysql,opentsdb,tempo,zipkin,grafana-pyroscope-datasource,stackdriver,cloudwatch,elasticsearch,influxdb
+    # PostgreSQL is back on (modbus ADR-022): the live dashboard reads the TimescaleDB hypertable live.readings.
+    # Refresh down to 1 s (default minimum 5 s), so a change in the simulator shows in < 5 s (Phase 7 DoD).
+    dashboards:
+      min_refresh_interval: 1s
+  # The read-only role grafana_live (schema live only; scripts/bootstrap-postgres-ingest.sh). The password comes from the
+  # vault as an environment variable, which the datasource file refers to; optional, so Grafana still starts without it.
+  envFromSecrets:
+    - name: grafana-live
+      optional: true
+  additionalDataSources:
+    - name: Live (TimescaleDB)
+      uid: live-timescale
+      type: grafana-postgresql-datasource
+      url: postgres.data.svc.cluster.local:5432
+      user: grafana_live
+      editable: false
+      jsonData: {database: ingest, sslmode: disable, postgresVersion: 1700, timescaledb: true, maxOpenConns: 3, maxIdleConns: 1}
+      secureJsonData: {password: $GRAFANA_LIVE_PASSWORD}
 prometheus:
   prometheusSpec:
     scrapeInterval: 60s

@@ -1,0 +1,511 @@
+# Live dashboard of the modbus project (ADR-022, D6: dashboards as code). Grafana's sidecar loads every ConfigMap
+# labelled grafana_dashboard, in any namespace. It reads the TimescaleDB hypertable live.readings through the
+# datasource "live-timescale" (role grafana_live, schema live only), refreshing every second.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dashboard-modbus-live
+  namespace: ingest
+  labels: {grafana_dashboard: "1"}
+data:
+  modbus-live.json: |
+    {
+     "uid": "modbus-live",
+     "title": "Modbus · Live (agora)",
+     "tags": [
+      "modbus",
+      "live"
+     ],
+     "timezone": "utc",
+     "refresh": "1s",
+     "time": {
+      "from": "now-15m",
+      "to": "now"
+     },
+     "schemaVersion": 39,
+     "editable": false,
+     "timepicker": {
+      "refresh_intervals": [
+       "1s",
+       "5s",
+       "10s",
+       "30s",
+       "1m"
+      ]
+     },
+     "description": "Caminho live (modbus ADR-022, L1): spool → trigger → live.readings (TimescaleDB). Refresh 1 s.",
+     "panels": [
+      {
+       "type": "stat",
+       "title": "Atraso do live (agora − última amostra recebida)",
+       "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "live-timescale"
+       },
+       "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 8,
+        "h": 4
+       },
+       "fieldConfig": {
+        "defaults": {
+         "unit": "s",
+         "decimals": 1,
+         "thresholds": {
+          "mode": "absolute",
+          "steps": [
+           {
+            "color": "green",
+            "value": null
+           },
+           {
+            "color": "orange",
+            "value": 5
+           },
+           {
+            "color": "red",
+            "value": 60
+           }
+          ]
+         }
+        },
+        "overrides": []
+       },
+       "options": {
+        "reduceOptions": {
+         "calcs": [
+          "lastNotNull"
+         ]
+        },
+        "colorMode": "background"
+       },
+       "targets": [
+        {
+         "refId": "A",
+         "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "live-timescale"
+         },
+         "rawQuery": true,
+         "editorMode": "code",
+         "format": "table",
+         "rawSql": "SELECT extract(epoch FROM now() - max(ingest_time)) AS atraso FROM live.readings WHERE time > now() - interval '1 hour'"
+        }
+       ]
+      },
+      {
+       "type": "stat",
+       "title": "Amostras por segundo (último minuto)",
+       "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "live-timescale"
+       },
+       "gridPos": {
+        "x": 8,
+        "y": 0,
+        "w": 8,
+        "h": 4
+       },
+       "fieldConfig": {
+        "defaults": {
+         "unit": "short",
+         "decimals": 1
+        },
+        "overrides": []
+       },
+       "options": {
+        "reduceOptions": {
+         "calcs": [
+          "lastNotNull"
+         ]
+        }
+       },
+       "targets": [
+        {
+         "refId": "A",
+         "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "live-timescale"
+         },
+         "rawQuery": true,
+         "editorMode": "code",
+         "format": "table",
+         "rawSql": "SELECT count(*) / 60.0 AS por_segundo FROM live.readings WHERE ingest_time > now() - interval '1 minute'"
+        }
+       ]
+      },
+      {
+       "type": "stat",
+       "title": "Amostras que o trigger não copiou (desde a instalação)",
+       "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "live-timescale"
+       },
+       "gridPos": {
+        "x": 16,
+        "y": 0,
+        "w": 8,
+        "h": 4
+       },
+       "fieldConfig": {
+        "defaults": {
+         "unit": "short",
+         "thresholds": {
+          "mode": "absolute",
+          "steps": [
+           {
+            "color": "green",
+            "value": null
+           },
+           {
+            "color": "red",
+            "value": 1
+           }
+          ]
+         }
+        },
+        "overrides": []
+       },
+       "options": {
+        "reduceOptions": {
+         "calcs": [
+          "lastNotNull"
+         ]
+        },
+        "colorMode": "background"
+       },
+       "targets": [
+        {
+         "refId": "A",
+         "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "live-timescale"
+         },
+         "rawQuery": true,
+         "editorMode": "code",
+         "format": "table",
+         "rawSql": "SELECT failures AS falhas FROM live.health"
+        }
+       ]
+      },
+      {
+       "type": "stat",
+       "title": "PUMP-01: agora",
+       "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "live-timescale"
+       },
+       "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 8,
+        "h": 7
+       },
+       "fieldConfig": {
+        "defaults": {
+         "decimals": 2
+        },
+        "overrides": []
+       },
+       "options": {
+        "reduceOptions": {
+         "calcs": [
+          "lastNotNull"
+         ],
+         "fields": "/^value$/",
+         "values": true
+        },
+        "textMode": "value_and_name",
+        "orientation": "horizontal"
+       },
+       "targets": [
+        {
+         "refId": "A",
+         "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "live-timescale"
+         },
+         "rawQuery": true,
+         "editorMode": "code",
+         "format": "table",
+         "rawSql": "SELECT DISTINCT ON (tag) tag, value FROM live.readings WHERE asset = 'PUMP-01' AND time > now() - interval '5 minutes' ORDER BY tag, time DESC"
+        }
+       ],
+       "transformations": [
+        {
+         "id": "rowsToFields",
+         "options": {
+          "mappings": [
+           {
+            "fieldName": "tag",
+            "handlerKey": "field.name"
+           },
+           {
+            "fieldName": "value",
+            "handlerKey": "field.value"
+           }
+          ]
+         }
+        }
+       ]
+      },
+      {
+       "type": "stat",
+       "title": "MOTOR-01: agora",
+       "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "live-timescale"
+       },
+       "gridPos": {
+        "x": 8,
+        "y": 4,
+        "w": 8,
+        "h": 7
+       },
+       "fieldConfig": {
+        "defaults": {
+         "decimals": 2
+        },
+        "overrides": []
+       },
+       "options": {
+        "reduceOptions": {
+         "calcs": [
+          "lastNotNull"
+         ],
+         "fields": "/^value$/",
+         "values": true
+        },
+        "textMode": "value_and_name",
+        "orientation": "horizontal"
+       },
+       "targets": [
+        {
+         "refId": "A",
+         "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "live-timescale"
+         },
+         "rawQuery": true,
+         "editorMode": "code",
+         "format": "table",
+         "rawSql": "SELECT DISTINCT ON (tag) tag, value FROM live.readings WHERE asset = 'MOTOR-01' AND time > now() - interval '5 minutes' ORDER BY tag, time DESC"
+        }
+       ],
+       "transformations": [
+        {
+         "id": "rowsToFields",
+         "options": {
+          "mappings": [
+           {
+            "fieldName": "tag",
+            "handlerKey": "field.name"
+           },
+           {
+            "fieldName": "value",
+            "handlerKey": "field.value"
+           }
+          ]
+         }
+        }
+       ]
+      },
+      {
+       "type": "stat",
+       "title": "CHILLER-01: agora",
+       "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "live-timescale"
+       },
+       "gridPos": {
+        "x": 16,
+        "y": 4,
+        "w": 8,
+        "h": 7
+       },
+       "fieldConfig": {
+        "defaults": {
+         "decimals": 2
+        },
+        "overrides": []
+       },
+       "options": {
+        "reduceOptions": {
+         "calcs": [
+          "lastNotNull"
+         ],
+         "fields": "/^value$/",
+         "values": true
+        },
+        "textMode": "value_and_name",
+        "orientation": "horizontal"
+       },
+       "targets": [
+        {
+         "refId": "A",
+         "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "live-timescale"
+         },
+         "rawQuery": true,
+         "editorMode": "code",
+         "format": "table",
+         "rawSql": "SELECT DISTINCT ON (tag) tag, value FROM live.readings WHERE asset = 'CHILLER-01' AND time > now() - interval '5 minutes' ORDER BY tag, time DESC"
+        }
+       ],
+       "transformations": [
+        {
+         "id": "rowsToFields",
+         "options": {
+          "mappings": [
+           {
+            "fieldName": "tag",
+            "handlerKey": "field.name"
+           },
+           {
+            "fieldName": "value",
+            "handlerKey": "field.value"
+           }
+          ]
+         }
+        }
+       ]
+      },
+      {
+       "type": "timeseries",
+       "title": "PUMP-01: últimos minutos (média a cada 5 s)",
+       "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "live-timescale"
+       },
+       "gridPos": {
+        "x": 0,
+        "y": 11,
+        "w": 24,
+        "h": 8
+       },
+       "fieldConfig": {
+        "defaults": {
+         "custom": {
+          "spanNulls": false,
+          "showPoints": "never"
+         }
+        },
+        "overrides": []
+       },
+       "options": {
+        "legend": {
+         "displayMode": "table",
+         "placement": "right",
+         "calcs": [
+          "lastNotNull"
+         ]
+        }
+       },
+       "targets": [
+        {
+         "refId": "A",
+         "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "live-timescale"
+         },
+         "rawQuery": true,
+         "editorMode": "code",
+         "format": "time_series",
+         "rawSql": "SELECT time_bucket('5 seconds', time) AS time, tag AS metric, avg(value) AS value FROM live.readings WHERE asset = 'PUMP-01' AND $__timeFilter(time) GROUP BY 1, 2 ORDER BY 1"
+        }
+       ]
+      },
+      {
+       "type": "timeseries",
+       "title": "MOTOR-01: últimos minutos (média a cada 5 s)",
+       "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "live-timescale"
+       },
+       "gridPos": {
+        "x": 0,
+        "y": 19,
+        "w": 24,
+        "h": 8
+       },
+       "fieldConfig": {
+        "defaults": {
+         "custom": {
+          "spanNulls": false,
+          "showPoints": "never"
+         }
+        },
+        "overrides": []
+       },
+       "options": {
+        "legend": {
+         "displayMode": "table",
+         "placement": "right",
+         "calcs": [
+          "lastNotNull"
+         ]
+        }
+       },
+       "targets": [
+        {
+         "refId": "A",
+         "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "live-timescale"
+         },
+         "rawQuery": true,
+         "editorMode": "code",
+         "format": "time_series",
+         "rawSql": "SELECT time_bucket('5 seconds', time) AS time, tag AS metric, avg(value) AS value FROM live.readings WHERE asset = 'MOTOR-01' AND $__timeFilter(time) GROUP BY 1, 2 ORDER BY 1"
+        }
+       ]
+      },
+      {
+       "type": "timeseries",
+       "title": "CHILLER-01: últimos minutos (média a cada 5 s)",
+       "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "live-timescale"
+       },
+       "gridPos": {
+        "x": 0,
+        "y": 27,
+        "w": 24,
+        "h": 8
+       },
+       "fieldConfig": {
+        "defaults": {
+         "custom": {
+          "spanNulls": false,
+          "showPoints": "never"
+         }
+        },
+        "overrides": []
+       },
+       "options": {
+        "legend": {
+         "displayMode": "table",
+         "placement": "right",
+         "calcs": [
+          "lastNotNull"
+         ]
+        }
+       },
+       "targets": [
+        {
+         "refId": "A",
+         "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "live-timescale"
+         },
+         "rawQuery": true,
+         "editorMode": "code",
+         "format": "time_series",
+         "rawSql": "SELECT time_bucket('5 seconds', time) AS time, tag AS metric, avg(value) AS value FROM live.readings WHERE asset = 'CHILLER-01' AND $__timeFilter(time) GROUP BY 1, 2 ORDER BY 1"
+        }
+       ]
+      }
+     ]
+    }
